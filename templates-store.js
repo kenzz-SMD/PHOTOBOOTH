@@ -193,10 +193,48 @@ const CloudSync = (() => {
     statusCbs.forEach((cb) => { try { cb(status); } catch (e) {} });
   }
 
+  // New-style keys (sb_publishable_...) are not JWTs, so they go in `apikey` only.
+  // When an admin is signed in, their login token is used so the database lets them write templates.
+  const SESS_KEY = 'ts-cloud-session';
+  const getSess = () => ls.get(SESS_KEY, null);
+  function authHeaders(key) {
+    const s = getSess();
+    const bearer = s ? s.access_token : (/^sb_/.test(key) ? null : key);
+    return bearer ? { apikey: key, Authorization: 'Bearer ' + bearer } : { apikey: key };
+  }
+  async function authCall(path, body) {
+    const c = getConfig();
+    const res = await fetch(c.url.replace(/\/+$/, '') + '/auth/v1/' + path, {
+      method: 'POST', headers: { apikey: c.key, 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error_description || j.msg || j.message || ('Login failed (' + res.status + ')'));
+    return j;
+  }
+  function saveSess(j) {
+    const s = { access_token: j.access_token, refresh_token: j.refresh_token,
+      expires_at: Date.now() + (j.expires_in || 3600) * 1000, email: (j.user && j.user.email) || '' };
+    ls.set(SESS_KEY, s);
+    return s;
+  }
+  async function refreshSession() {
+    const s = getSess();
+    if (!s || s.expires_at - Date.now() > 60000) return s;
+    try { return saveSess(await authCall('token?grant_type=refresh_token', { refresh_token: s.refresh_token })); }
+    catch (e) { if (navigator.onLine) ls.set(SESS_KEY, null); return getSess(); }
+  }
+  async function isAdminRemote() {
+    const c = getConfig();
+    const res = await fetch(c.url.replace(/\/+$/, '') + '/rest/v1/rpc/ts_is_admin', {
+      method: 'POST', headers: Object.assign(authHeaders(c.key), { 'Content-Type': 'application/json' }), body: '{}'
+    });
+    if (!res.ok) throw new Error('Could not verify admin (' + res.status + ')');
+    return (await res.json()) === true;
+  }
   function base() { return getConfig().url.replace(/\/+$/, ''); }
   function hdr(extra) {
     const c = getConfig();
-    return Object.assign({ apikey: c.key, Authorization: 'Bearer ' + c.key }, extra || {});
+    return Object.assign(authHeaders(c.key), extra || {});
   }
   async function check(res, what) {
     if (!res.ok) {
@@ -232,7 +270,9 @@ const CloudSync = (() => {
     const pushed = ls.get(PUSHED_KEY, {});
     const tombs = ls.get(TOMB_KEY, {});
 
+    const admin = !!getSess();
     for (const kind of kinds()) {
+      if (kind === 'template' && !admin) continue;      // guests never write templates
       const recs = await TemplateStore._run(KINDS[kind], 'readonly', (s) => s.getAll()) || [];
       for (const rec of recs) {
         const key = kind + ':' + rec.id;
@@ -246,6 +286,7 @@ const CloudSync = (() => {
       }
     }
     for (const key of Object.keys(tombs)) {
+      if (key.startsWith('template:') && !admin) continue;
       const [kind, ...rest] = key.split(':');
       const id = rest.join(':');
       await upsertRows([{ lib: c.lib, id, kind, data: {}, deleted: true, updated_at: tombs[key] }]);
@@ -315,6 +356,7 @@ const CloudSync = (() => {
     running = true; again = false;
     setStatus('syncing');
     try {
+      await refreshSession();
       const changed = await pullAll();
       await pushAll();
       status.last = Date.now(); ls.set('ts-cloud-last', status.last);
@@ -366,7 +408,7 @@ const CloudSync = (() => {
           broadcast: { self: false }, presence: { key: '' },
           postgres_changes: [{ event: '*', schema: 'public', table: 'ts_items', filter: 'lib=eq.' + c.lib }]
         },
-        access_token: c.key
+        access_token: (getSess() || {}).access_token || (/^sb_/.test(c.key) ? undefined : c.key)
       });
       wsBeat = setInterval(() => send('phoenix', 'heartbeat', {}), 25000);
     };
@@ -407,6 +449,23 @@ const CloudSync = (() => {
 
   return {
     getConfig, enabled,
+    // ---- admin login (Supabase Auth, email + password) ----
+    async login(email, password) {
+      saveSess(await authCall('token?grant_type=password', { email, password }));
+      let ok = false;
+      try { ok = await isAdminRemote(); } catch (e) { ls.set(SESS_KEY, null); throw e; }
+      if (!ok) { ls.set(SESS_KEY, null); throw new Error('This account is not an admin of this booth.'); }
+      openRealtime();
+      return getSess();
+    },
+    async restoreSession() {
+      if (!getSess() || !getConfig()) return false;
+      await refreshSession();
+      if (!getSess()) return false;
+      try { return await isAdminRemote(); } catch (e) { return !navigator.onLine; }   // offline: trust the saved login
+    },
+    logout() { ls.set(SESS_KEY, null); },
+    get adminEmail() { return (getSess() || {}).email || ''; },
     get status() { return status; },
     onStatus(cb) { statusCbs.push(cb); cb(status); },
     onPulled(cb) { pulledCbs.push(cb); },
@@ -433,7 +492,7 @@ const CloudSync = (() => {
     async test(cfg) {      // verify credentials + table before enabling
       const u = cfg.url.replace(/\/+$/, '');
       const res = await fetch(u + '/rest/v1/ts_items?select=id&limit=1', {
-        headers: { apikey: cfg.key, Authorization: 'Bearer ' + cfg.key }
+        headers: authHeaders(cfg.key)
       });
       await check(res, 'Connection');
       return true;

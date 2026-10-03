@@ -6,12 +6,25 @@
   <title>Admin · Timeless Strips</title>
   <link rel="stylesheet" href="admin.css">
 </head>
-<body>
+<body class="locked">
+
+  <!-- Login gate: the dashboard stays hidden until an admin signs in -->
+  <section id="login" class="login-wrap">
+    <form id="login-form" class="card login-card">
+      <h2>🔒 Admin login</h2>
+      <p class="muted small">Only booth admins can manage templates. Guests use the photobooth link.</p>
+      <label>Email<input id="login-email" type="email" autocomplete="username" required></label>
+      <label>Password<input id="login-pass" type="password" autocomplete="current-password" required></label>
+      <button class="btn" type="submit">Sign in</button>
+      <p id="login-msg" class="muted small"></p>
+    </form>
+  </section>
 
   <header class="top">
     <h1>Timeless Strips <span>Admin</span></h1>
     <div class="top-actions">
       <a class="btn ghost" href="index.html">← Photobooth</a>
+      <button id="logout-btn" class="btn ghost">Sign out</button>
       <button id="export-btn" class="btn ghost">⬇ Export</button>
       <button id="import-btn" class="btn ghost">⬆ Import</button>
       <input type="file" id="import-input" accept="application/json,.json" hidden>
@@ -60,7 +73,7 @@
       </p>
       <div class="cloud-form">
         <label>Project URL<input id="cloud-url" type="url" placeholder="https://xxxx.supabase.co" autocomplete="off"></label>
-        <label>Anon public key<input id="cloud-key" type="password" placeholder="eyJ…" autocomplete="off"></label>
+        <label>Publishable (anon) key<input id="cloud-key" type="password" placeholder="eyJ…" autocomplete="off"></label>
         <label>Library code <small class="muted">(acts like a shared password)</small>
           <input id="cloud-lib" type="text" placeholder="my-booth-4f8a2c91" autocomplete="off"></label>
       </div>
@@ -120,6 +133,7 @@
   <script src="cloud-config.js"></script>
   <script src="templates-store.js"></script>
   <script src="admin.js"></script>
+  <script src="admin-auth.js"></script>
   <script>if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(function(){});</script>
 </body>
 </html>
