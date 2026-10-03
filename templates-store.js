@@ -177,7 +177,14 @@ const CloudSync = (() => {
   const statusCbs = [], pulledCbs = [];
   let running = false, again = false, timer = null, debounce = null;
 
-  const getConfig = () => ls.get(CFG_KEY, null);
+  // Site-wide settings (cloud-config.js, deployed with the site) apply to EVERY device.
+  // Settings typed into the admin card on this device override them.
+  const getConfig = () => {
+    const site = (typeof window !== 'undefined' && window.TS_CLOUD_CONFIG) || null;
+    const local = ls.get(CFG_KEY, null);
+    if (!site && !local) return null;
+    return Object.assign({ enabled: true }, site || {}, local || {});
+  };
   const enabled = () => { const c = getConfig(); return !!(c && c.enabled && c.url && c.key && c.lib); };
 
   function setStatus(state, msg) {
@@ -301,8 +308,10 @@ const CloudSync = (() => {
     running = true; again = false;
     setStatus('syncing');
     try {
-      const changed = await pullAll();
-      await pushAll();
+      let changed = false, firstErr = null;
+      try { await pushAll(); } catch (e) { firstErr = e; }
+      try { changed = await pullAll(); } catch (e) { firstErr = firstErr || e; }
+      if (firstErr) throw firstErr;
       status.last = Date.now(); ls.set('ts-cloud-last', status.last);
       setStatus('ok');
       if (changed) pulledCbs.forEach((cb) => { try { cb(); } catch (e) {} });
@@ -319,7 +328,7 @@ const CloudSync = (() => {
 
   function schedule() {
     clearInterval(timer);
-    if (enabled()) timer = setInterval(() => { if (!document.hidden) sync(); }, 30000);
+    if (enabled()) timer = setInterval(() => { if (!document.hidden) sync(); }, 15000);
   }
 
   window.addEventListener('online', () => sync());
@@ -342,7 +351,7 @@ const CloudSync = (() => {
       schedule();
       return sync();
     },
-    disable() { const c = getConfig(); if (c) { c.enabled = false; ls.set(CFG_KEY, c); } clearInterval(timer); setStatus('off'); },
+    disable() { const c = Object.assign({}, getConfig() || {}, { enabled: false }); ls.set(CFG_KEY, c); clearInterval(timer); setStatus('off'); },
 
     sync,
     queue() { clearTimeout(debounce); debounce = setTimeout(sync, 800); },

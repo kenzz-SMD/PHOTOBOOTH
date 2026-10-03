@@ -56,7 +56,7 @@
       <p class="muted small">
         Share templates and finished strips between devices. Create a free Supabase project,
         run <code>supabase-setup.sql</code> once, then paste the project URL and the
-        <b>anon public</b> key below. Use the same <b>library code</b> on every device.
+        <b>anon public</b> key below. Then click <b>Download cloud-config.js</b> and put that file next to <code>index.html</code> on your site: <b>every device</b> then receives new templates automatically.
       </p>
       <div class="cloud-form">
         <label>Project URL<input id="cloud-url" type="url" placeholder="https://xxxx.supabase.co" autocomplete="off"></label>
@@ -68,6 +68,7 @@
         <button id="cloud-save" class="btn">Connect &amp; sync</button>
         <button id="cloud-now" class="btn ghost">Sync now</button>
         <button id="cloud-off" class="btn ghost">Turn off</button>
+        <button id="cloud-dl" class="btn ghost">⬇ Download cloud-config.js</button>
       </div>
       <p id="cloud-msg" class="muted small"></p>
     </section>
@@ -117,6 +118,7 @@
 
   <div id="toast" popover="manual" role="status"></div>
 
+  <script src="cloud-config.js"></script>
   <script src="templates-store.js"></script>
   <script src="admin.js"></script>
   <script>if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(function(){});</script>
