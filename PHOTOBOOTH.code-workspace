@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"name": "PHOTOBOOTH",
+			"path": "."
+		},
+		{
+			"name": "Templates",
+			"path": "Templates"
+		}
+	],
+	"settings": {
+		"liveServer.settings.multiRootWorkspaceName": "PHOTOBOOTH"
+	}
+}

@@ -59,6 +59,10 @@ const canvas = $('canvas');
 const countdownEl = $('countdown');
 const flashEl = $('flash');
 const bgAnim = $('bg-anim');
+const arCanvas = $('ar-canvas');
+const arBar = $('ar-bar');
+const arStatus = $('ar-status');
+const editAutoCropBtn = $('edit-autocrop-btn');
 
 const editScreen = $('edit-screen');
 const editWrap = $('edit-wrap');
@@ -79,6 +83,7 @@ const editAgainBtn = $('edit-again-btn');
 const newStripBtn = $('new-strip-btn');
 const homeBtn = $('home-btn');
 const galleryEl = $('gallery');
+
 
 let cameraStarted = false;
 
@@ -226,6 +231,7 @@ function startCamera() {
     .then((stream) => {
       video.srcObject = stream;
       cameraStarted = true;
+      startAr();
     })
     .catch((err) => {
       console.error('Camera error:', err);
@@ -249,6 +255,11 @@ function captureStrip(shotNumber, photos) {
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    if (arFilter !== 'none') {
+      const faces = (typeof FaceEngine !== 'undefined' && arReady)
+        ? FaceEngine.detectVideo(video, performance.now()) : arFaces;
+      drawArFaces(ctx, faces || arFaces, arFilter);
+    }
     photos.push(canvas.toDataURL('image/png'));
 
     if (shotNumber < currentSlots().length) {
@@ -260,6 +271,79 @@ function captureStrip(shotNumber, photos) {
     }
   });
 }
+
+
+// ===================== AR FACE FILTERS (live) =====================
+let arFilter = 'none';
+let arReady = false;
+let arFaces = [];
+let arLoopOn = false;
+let arLastTs = 0;
+
+function buildArBar() {
+  if (typeof AR_FILTERS === 'undefined') { arBar.classList.add('hidden'); return; }
+  arBar.innerHTML = '';
+  AR_FILTERS.forEach((f) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ar-chip' + (f.id === arFilter ? ' active' : '');
+    b.innerHTML = '<span class="ar-ico">' + f.icon + '</span><span>' + f.name + '</span>';
+    b.addEventListener('click', () => {
+      arFilter = f.id;
+      arBar.querySelectorAll('.ar-chip').forEach((c) => c.classList.toggle('active', c === b));
+      if (f.id !== 'none' && !arReady) loadArEngine();
+    });
+    arBar.appendChild(b);
+  });
+}
+
+function loadArEngine() {
+  if (typeof FaceEngine === 'undefined' || arReady) return;
+  arStatus.textContent = 'Loading face filters…';
+  FaceEngine.initVideo().then((ok) => {
+    arReady = ok;
+    arStatus.textContent = ok ? '' : 'Face filters need an internet connection the first time.';
+    if (ok) arLoop();
+  });
+}
+
+function startAr() {
+  buildArBar();
+  if (typeof FaceEngine !== 'undefined') FaceEngine.preload();   // warm the models
+  arLoop();
+}
+
+function arLoop() {
+  if (arLoopOn) return;
+  arLoopOn = true;
+  const tick = () => {
+    if (boothScreen.classList.contains('hidden') || !video.videoWidth) {
+      if (!boothScreen.classList.contains('hidden')) { requestAnimationFrame(tick); return; }
+      arLoopOn = false;           // resumed when the booth is shown again
+      return;
+    }
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (arCanvas.width !== vw || arCanvas.height !== vh) { arCanvas.width = vw; arCanvas.height = vh; }
+    const ctx = arCanvas.getContext('2d');
+    ctx.clearRect(0, 0, vw, vh);
+    if (arFilter !== 'none' && arReady) {
+      const now = performance.now();
+      if (now - arLastTs > 33 && now > arLastTs) {       // ~30 fps detection
+        const f = FaceEngine.detectVideo(video, now);
+        if (f) arFaces = f;
+        arLastTs = now;
+      }
+      drawArFaces(ctx, arFaces, arFilter);
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+// resume the loop whenever the booth screen is shown again
+new MutationObserver(() => {
+  if (!boothScreen.classList.contains('hidden') && cameraStarted) arLoop();
+}).observe(boothScreen, { attributes: true, attributeFilter: ['class'] });
 
 function runCountdown(callback) {
   let count = 3;
@@ -849,6 +933,56 @@ window.addEventListener('resize', () => {
   if (!editScreen.classList.contains('hidden')) layoutEditor();
 });
 
+
+// ===================== AI AUTO-CROP =====================
+// Detect faces in every photo, then centre and zoom each photo on its faces.
+async function autoAlign() {
+  if (typeof FaceEngine === 'undefined' || !editState) return;
+  editAutoCropBtn.disabled = true;
+  const old = editAutoCropBtn.textContent;
+  editAutoCropBtn.textContent = '⏳ Finding faces…';
+  try {
+    const slots = currentSlots();
+    let found = 0, unavailable = false;
+    for (let i = 0; i < editState.length; i++) {
+      const item = editState[i], slot = slots[i];
+      const faces = await FaceEngine.detectImage(item.img);
+      if (faces === null) { unavailable = true; break; }
+      if (!faces.length) continue;
+      found++;
+      const nw = item.img.naturalWidth, nh = item.img.naturalHeight;
+      // bounding rectangle of all faces (natural image pixels), padded
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      faces.forEach((f) => {
+        x0 = Math.min(x0, f.box.x); y0 = Math.min(y0, f.box.y);
+        x1 = Math.max(x1, f.box.x + f.box.w); y1 = Math.max(y1, f.box.y + f.box.h);
+      });
+      const padX = (x1 - x0) * 0.9, padTop = (y1 - y0) * 0.9, padBot = (y1 - y0) * 0.6;
+      x0 -= padX; x1 += padX; y0 -= padTop; y1 += padBot;
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      const rw = Math.max(1, x1 - x0), rh = Math.max(1, y1 - y0);
+      // scale so the padded face region just fits inside the slot
+      const scale = Math.min(slot.w / rw, slot.h / rh);       // slot px per image px
+      let w = nw * scale;
+      w = Math.min(item.maxW, Math.max(item.minW, w));
+      const k = w / nw;
+      item.box.w = w;
+      item.box.h = nh * k;
+      item.box.x = slot.w / 2 - cx * k;
+      item.box.y = slot.h / 2 - cy * k;
+      clampBox(item, slot);
+      applyBox(i);
+    }
+    if (unavailable) toast('Face detection needs internet the first time.');
+    else toast(found ? 'Aligned faces in ' + found + ' of ' + editState.length + ' photos ✨'
+                     : 'No faces found.');
+  } finally {
+    editAutoCropBtn.disabled = false;
+    editAutoCropBtn.textContent = old;
+  }
+}
+editAutoCropBtn.addEventListener('click', autoAlign);
+
 // ---------- Edit screen buttons ----------
 editResetBtn.addEventListener('click', () => {
   const slots = currentSlots();
@@ -885,6 +1019,7 @@ editFinalizeBtn.addEventListener('click', async () => {
     resultScreen.classList.remove('hidden');
     showStrip(blob, false);
     renderGallery();
+    if (printAutoEl.checked) printStrip(blob).catch((e) => console.warn('Auto-print failed:', e));
   } catch (err) {
     console.error(err);
     toast('Something went wrong while building the strip.');
@@ -1040,28 +1175,71 @@ async function renderGallery() {
   });
 }
 
-printBtn.addEventListener('click', async () => {
-  if (!currentBlob) return;
-  const w = window.open('', '_blank');
-  if (!w) { toast('Please allow pop-ups to print.'); return; }
-  const dataUrl = await blobToDataURL(currentBlob);
-  w.document.write(`
-    <html>
-      <head>
-        <title>Print Photo Strip</title>
-        <style>
-          @page { size: 2in 6in; margin: 0; }
-          body { margin: 0; display: flex; justify-content: center; align-items: center; }
-          img { width: 2in; height: 6in; }
-        </style>
-      </head>
-      <body>
-        <img src="${dataUrl}" onload="window.focus(); window.print();">
-      </body>
-    </html>
-  `);
-  w.document.close();
-});
+// ===================== PRINT =====================
+const printLayoutEl = $('print-layout');
+const printCopiesEl = $('print-copies');
+const printAutoEl = $('print-auto');
+
+(function loadPrintPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem('ts-print') || '{}');
+    if (p.layout) printLayoutEl.value = p.layout;
+    if (p.copies) printCopiesEl.value = p.copies;
+    printAutoEl.checked = !!p.auto;
+  } catch (e) {}
+  const save = () => {
+    try {
+      localStorage.setItem('ts-print', JSON.stringify({
+        layout: printLayoutEl.value, copies: printCopiesEl.value, auto: printAutoEl.checked
+      }));
+    } catch (e) {}
+  };
+  [printLayoutEl, printCopiesEl, printAutoEl].forEach((el) => el.addEventListener('change', save));
+})();
+
+// Prints through a hidden iframe so no pop-up is needed (and kiosk-printing works).
+async function printStrip(blob) {
+  if (!blob) return;
+  const dataUrl = await blobToDataURL(blob);
+  const copies = Math.max(1, Math.min(10, parseInt(printCopiesEl.value, 10) || 1));
+  const twoUp = printLayoutEl.value === 'twoup';
+  // 2-up: one 4x6 sheet holds two 2x6 strips (cut in the middle); copies = sheets
+  const sheets = twoUp ? copies : 1;
+  const page = twoUp ? '4in 6in' : '2in 6in';
+  const imgs = (twoUp ? 2 : 1);
+
+  let html = '<!doctype html><html><head><meta charset="utf-8"><title>Photo strip</title><style>' +
+    '@page{size:' + page + ';margin:0}' +
+    'html,body{margin:0;padding:0}' +
+    '.sheet{width:' + (twoUp ? '4in' : '2in') + ';height:6in;display:flex;page-break-after:always;break-after:page;overflow:hidden}' +
+    '.sheet:last-child{page-break-after:auto;break-after:auto}' +
+    'img{width:2in;height:6in;display:block}' +
+    '</style></head><body>';
+  const total = twoUp ? sheets : copies;
+  for (let i = 0; i < total; i++) {
+    html += '<div class="sheet">' + '<img src="' + dataUrl + '">'.repeat(imgs) + '</div>';
+  }
+  html += '</body></html>';
+
+  const old = document.getElementById('print-frame');
+  if (old) old.remove();
+  const f = document.createElement('iframe');
+  f.id = 'print-frame';
+  f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;';
+  document.body.appendChild(f);
+  const doc = f.contentWindow.document;
+  doc.open(); doc.write(html); doc.close();
+
+  const imgEls = Array.from(doc.images);
+  await Promise.all(imgEls.map((im) => im.complete ? 0 : new Promise((r) => { im.onload = im.onerror = r; })));
+  f.contentWindow.focus();
+  f.contentWindow.print();
+  toast('Sent to printer 🖨️');
+}
+
+printBtn.addEventListener('click', () => printStrip(currentBlob).catch((e) => {
+  console.error(e); toast('Could not print.');
+}));
 
 function downloadBlob(blob) {
   const link = document.createElement('a');
@@ -1200,5 +1378,42 @@ function playShutter() {
   }
 })();
 
+
 // ===================== START =====================
 buildStickerPalette();
+
+
+// ===================== OFFLINE MODE + CLOUD BADGE =====================
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Offline mode unavailable:', e));
+}
+
+(function netBadge() {
+  const badge = $('net-badge');
+  if (!badge) return;
+  let cloud = { state: 'off' };
+  function paint() {
+    const online = navigator.onLine;
+    let text = online ? '● Online' : '○ Offline – working locally';
+    let cls = online ? 'net-online' : 'net-offline';
+    if (typeof CloudSync !== 'undefined' && CloudSync.enabled()) {
+      if (cloud.state === 'syncing') text += ' · ☁ syncing…';
+      else if (cloud.state === 'ok') text += ' · ☁ synced';
+      else if (cloud.state === 'error') { text += ' · ☁ sync error'; cls = 'net-error'; }
+      else if (!online) text += ' · ☁ will sync later';
+    }
+    badge.textContent = text;
+    badge.className = cls;
+  }
+  window.addEventListener('online', paint);
+  window.addEventListener('offline', paint);
+  if (typeof CloudSync !== 'undefined') {
+    CloudSync.onStatus((st) => { cloud = st; paint(); });
+    // another device changed something: refresh templates + gallery
+    CloudSync.onPulled(() => {
+      if (typeof refreshTemplates === 'function') refreshTemplates();
+      if (!resultScreen.classList.contains('hidden')) renderGallery();
+    });
+  }
+  paint();
+})();

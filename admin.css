@@ -230,3 +230,14 @@ dialog h3 { margin: 0 0 8px; }
   border-radius: 12px;
   line-height: 1.6;
 }
+
+/* ===== Cloud sync card ===== */
+.cloud-form { display: grid; gap: 12px; max-width: 520px; margin: 12px 0; }
+.cloud-form label { display: grid; gap: 4px; font-size: 14px; font-weight: 600; }
+.cloud-form input {
+  padding: 9px 12px; border: 1px solid #d9c7b5; border-radius: 8px; font: inherit; font-weight: 400;
+}
+.cloud-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+#cloud-pill.ok { background: #2e9e5b; color: #fff; }
+#cloud-pill.error { background: #d93a3a; color: #fff; }
+#cloud-pill.syncing, #cloud-pill.offline { background: #e0a030; color: #fff; }

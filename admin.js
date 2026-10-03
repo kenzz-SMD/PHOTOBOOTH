@@ -625,3 +625,35 @@ $('import-input').addEventListener('change', async (e) => {
 // ===================== START =====================
 TemplateStore.onChange(() => renderGrid());
 renderGrid();
+
+// ===================== CLOUD SYNC CARD =====================
+(function cloudCard() {
+  if (typeof CloudSync === 'undefined') { const c = $('cloud-card'); if (c) c.remove(); return; }
+  const url = $('cloud-url'), key = $('cloud-key'), lib = $('cloud-lib'), msg = $('cloud-msg'), pill = $('cloud-pill');
+  const cfg = CloudSync.getConfig();
+  if (cfg) { url.value = cfg.url || ''; key.value = cfg.key || ''; lib.value = cfg.lib || ''; }
+
+  CloudSync.onStatus((st) => {
+    pill.className = 'pill ' + st.state;
+    pill.textContent = { off: 'off', syncing: 'syncing…', ok: 'synced', offline: 'offline', error: 'error' }[st.state] || st.state;
+    msg.textContent = st.state === 'error' ? st.msg
+      : st.last ? 'Last synced ' + new Date(st.last).toLocaleString() : '';
+  });
+  CloudSync.onPulled(() => renderGrid());
+
+  $('cloud-save').onclick = async () => {
+    const c = { url: url.value.trim(), key: key.value.trim(), lib: lib.value.trim() };
+    if (!c.url || !c.key || !c.lib) { toast('Fill in all three fields.'); return; }
+    msg.textContent = 'Checking connection…';
+    try {
+      await CloudSync.test(c);
+    } catch (e) {
+      msg.textContent = e.message + ' — did you run supabase-setup.sql?';
+      return;
+    }
+    await CloudSync.configure(Object.assign(c, { enabled: true }));
+    toast('Cloud sync is on.');
+  };
+  $('cloud-now').onclick = () => CloudSync.sync();
+  $('cloud-off').onclick = () => { CloudSync.disable(); toast('Cloud sync turned off.'); };
+})();

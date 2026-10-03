@@ -868,3 +868,51 @@ body {
   z-index: 1000;
 }
 #app-toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ===== AR face filters ===== */
+#ar-canvas {
+  position: absolute;
+  left: 4px;
+  top: 24px;
+  width: calc(100% - 8px);
+  height: calc(100% - 28px);
+  transform: scaleX(-1);          /* mirrored like the video */
+  pointer-events: none;
+}
+#ar-bar {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 6px;
+  margin: 12px auto 0; max-width: 90vw;
+}
+.ar-chip {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-width: 64px; padding: 6px 8px; font-size: 11px;
+  background: rgba(255,255,255,.12); color: #fff;
+  border: 2px solid transparent; border-radius: 10px; cursor: pointer;
+}
+.ar-chip .ar-ico { font-size: 24px; line-height: 1; }
+.ar-chip.active { border-color: #fff; background: rgba(255,255,255,.28); }
+#ar-status { min-height: 1.2em; margin: 6px 0 0; }
+
+
+/* ===== Online / offline / cloud badge ===== */
+#net-badge {
+  position: fixed; top: 10px; right: 12px; z-index: 50;
+  padding: 4px 10px; font-size: 12px; border-radius: 999px;
+  background: rgba(0,0,0,.55); color: #fff; pointer-events: none;
+}
+#net-badge.net-online  { color: #8dffb0; }
+#net-badge.net-offline { color: #ffd37a; }
+#net-badge.net-error   { color: #ff9d9d; }
+
+
+/* ===== Print settings ===== */
+#print-settings {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 18px;
+  margin: 8px auto 14px; max-width: 560px; font-size: 14px;
+}
+#print-settings label { display: flex; align-items: center; gap: 6px; }
+#print-settings select, #print-settings input[type=number] {
+  padding: 5px 8px; border-radius: 6px; border: 1px solid #ccc; font: inherit;
+}
+#print-settings input[type=number] { width: 60px; }
+#print-settings .edit-hint { flex-basis: 100%; margin: 0; text-align: center; }

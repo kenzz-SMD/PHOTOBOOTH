@@ -49,6 +49,28 @@
         <b>Import</b> there.
       </p>
     </section>
+
+    <!-- 3. Cloud sync -->
+    <section class="card" id="cloud-card">
+      <h2>☁️ Cloud sync <span id="cloud-pill" class="pill">off</span></h2>
+      <p class="muted small">
+        Share templates and finished strips between devices. Create a free Supabase project,
+        run <code>supabase-setup.sql</code> once, then paste the project URL and the
+        <b>anon public</b> key below. Use the same <b>library code</b> on every device.
+      </p>
+      <div class="cloud-form">
+        <label>Project URL<input id="cloud-url" type="url" placeholder="https://xxxx.supabase.co" autocomplete="off"></label>
+        <label>Anon public key<input id="cloud-key" type="password" placeholder="eyJ…" autocomplete="off"></label>
+        <label>Library code <small class="muted">(acts like a shared password)</small>
+          <input id="cloud-lib" type="text" placeholder="my-booth-4f8a2c91" autocomplete="off"></label>
+      </div>
+      <div class="cloud-actions">
+        <button id="cloud-save" class="btn">Connect &amp; sync</button>
+        <button id="cloud-now" class="btn ghost">Sync now</button>
+        <button id="cloud-off" class="btn ghost">Turn off</button>
+      </div>
+      <p id="cloud-msg" class="muted small"></p>
+    </section>
   </main>
 
   <!-- Confirm dialog -->
@@ -97,5 +119,6 @@
 
   <script src="templates-store.js"></script>
   <script src="admin.js"></script>
+  <script>if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(function(){});</script>
 </body>
 </html>

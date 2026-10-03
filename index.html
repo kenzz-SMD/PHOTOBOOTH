@@ -81,11 +81,15 @@
     <p id="template-label"></p>
     <div id="video-wrap">
       <video id="camera" autoplay playsinline muted></video>
+      <canvas id="ar-canvas"></canvas>
       <div id="countdown"></div>
       <div id="flash"></div>
     </div>
     <canvas id="canvas" class="hidden"></canvas>
     <canvas id="strip-canvas" class="hidden"></canvas>
+
+    <div id="ar-bar" aria-label="Face filters"></div>
+    <p id="ar-status" class="edit-hint"></p>
 
     <br>
     <button id="strip-btn">🎞️ Capture Strip (4 Photos)</button>
@@ -98,6 +102,7 @@
     <h1>Edit your strip</h1>
     <div class="edit-actions">
       <button id="edit-reset-btn">↩️ Reset</button>
+      <button id="edit-autocrop-btn">🧠 Auto-crop faces</button>
       <button id="edit-retake-btn">🔁 Retake</button>
       <button id="edit-finalize-btn">✅ Finalize Strip</button>
     </div>
@@ -133,6 +138,20 @@
       <button id="download-btn">💾 Save</button>
       <button id="share-btn">📤 Share</button>
     </div>
+    <div id="print-settings">
+      <label>Paper
+        <select id="print-layout">
+          <option value="single">2×6 in strip</option>
+          <option value="twoup">4×6 in — 2 strips side by side</option>
+        </select>
+      </label>
+      <label>Copies
+        <input id="print-copies" type="number" min="1" max="10" value="1">
+      </label>
+      <label class="print-check"><input id="print-auto" type="checkbox"> Print automatically after each strip</label>
+      <p class="edit-hint">For instant, no-dialog printing set your booth printer as the default and launch the browser with <code>--kiosk-printing</code>.</p>
+    </div>
+
     <div class="result-actions">
       <button id="edit-again-btn">✏️ Edit Again</button>
       <button id="new-strip-btn">📸 New Strip</button>
@@ -143,10 +162,14 @@
     <div id="gallery"></div>
   </div>
 
+  <div id="net-badge" class="net-online" title="Connection / cloud sync status">● Online</div>
   <div id="app-toast" role="status"></div>
 
   <script src="icons.js"></script>
   <script src="templates-store.js"></script>
+  <script src="face-engine.js"></script>
   <script src="script.js"></script>
+
+  
 </body>
 </html>
