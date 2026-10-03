@@ -256,9 +256,7 @@ function captureStrip(shotNumber, photos) {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     if (arFilter !== 'none') {
-      const faces = (typeof FaceEngine !== 'undefined' && arReady)
-        ? FaceEngine.detectVideo(video, performance.now()) : arFaces;
-      drawArFaces(ctx, faces || arFaces, arFilter);
+      drawArFaces(ctx, arFaces, arFilter);   // same smoothed faces as the live preview
     }
     photos.push(canvas.toDataURL('image/png'));
 
@@ -333,7 +331,10 @@ function arLoop() {
         if (f) arFaces = f;
         arLastTs = now;
       }
+      arFaces = FaceEngine.step();           // smooth gliding every frame
       drawArFaces(ctx, arFaces, arFilter);
+    } else if (arReady && arFaces.length) {
+      FaceEngine.reset(); arFaces = [];      // filter off: forget old positions
     }
     requestAnimationFrame(tick);
   };

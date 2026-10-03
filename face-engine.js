@@ -57,6 +57,63 @@ const FaceEngine = (() => {
     });
   }
 
+  // ---- Tracking + smoothing: removes the shake from raw per-frame detections ----
+  // 1) Denoise: each detection is blended into a tracked face. Tiny movements (sensor jitter)
+  //    are almost ignored; real head movement passes through quickly, so it doesn't lag.
+  // 2) Ease: every drawn frame (60 fps) glides toward that target, so motion looks fluid
+  //    even though detection runs at ~30 fps.
+  // 3) Hold: if detection misses a face for a few frames, the last position is kept (no flicker).
+  const tracks = [];
+  let lastStep = 0;
+  const MAX_MISS = 8;
+  const cloneFace = (f) => ({ box: Object.assign({}, f.box), kp: f.kp.map((k) => ({ x: k.x, y: k.y })) });
+  const mid = (b) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+  const mix = (a, b, t) => a + (b - a) * t;
+
+  function denoise(t, r) {
+    const c0 = mid(t.box), c1 = mid(r.box);
+    const speed = Math.hypot(c1.x - c0.x, c1.y - c0.y) / (t.box.w || 1);   // fraction of face width
+    const a = speed < 0.004 ? 0.05 : Math.min(1, 0.1 + speed * 9);
+    t.box.x = mix(t.box.x, r.box.x, a);
+    t.box.y = mix(t.box.y, r.box.y, a);
+    t.box.w = mix(t.box.w, r.box.w, Math.min(a, 0.12));      // size changes slowly
+    t.box.h = mix(t.box.h, r.box.h, Math.min(a, 0.12));
+    if (t.kp.length === r.kp.length) {
+      t.kp.forEach((k, i) => { k.x = mix(k.x, r.kp[i].x, a); k.y = mix(k.y, r.kp[i].y, a); });
+    } else { t.kp = r.kp.map((k) => ({ x: k.x, y: k.y })); }
+  }
+
+  function updateTracks(raw) {
+    const used = new Set();
+    raw.forEach((r) => {
+      const rc = mid(r.box);
+      let best = -1, bd = Infinity;
+      tracks.forEach((tr, i) => {
+        if (used.has(i)) return;
+        const c = mid(tr.t.box), d = Math.hypot(c.x - rc.x, c.y - rc.y);
+        if (d < bd) { bd = d; best = i; }
+      });
+      if (best >= 0 && bd < tracks[best].t.box.w * 0.9) {
+        denoise(tracks[best].t, r); tracks[best].miss = 0; used.add(best);
+      } else {
+        tracks.push({ t: cloneFace(r), c: cloneFace(r), miss: 0 });
+        used.add(tracks.length - 1);
+      }
+    });
+    for (let i = tracks.length - 1; i >= 0; i--) {
+      if (used.has(i)) continue;
+      if (++tracks[i].miss > MAX_MISS) tracks.splice(i, 1);
+    }
+  }
+
+  function ease(k) {
+    tracks.forEach(({ c, t }) => {
+      ['x', 'y', 'w', 'h'].forEach((p) => { c.box[p] = mix(c.box[p], t.box[p], k); });
+      if (c.kp.length !== t.kp.length) { c.kp = t.kp.map((q) => ({ x: q.x, y: q.y })); return; }
+      c.kp.forEach((q, i) => { q.x = mix(q.x, t.kp[i].x, k); q.y = mix(q.y, t.kp[i].y, k); });
+    });
+  }
+
   return {
     get failed() { return failed; },
 
@@ -81,9 +138,22 @@ const FaceEngine = (() => {
     detectVideo(video, ts) {
       const det = ready.VIDEO;
       if (!det || !video.videoWidth) return null;
-      try { return normalize(det.detectForVideo(video, ts), video.videoWidth, video.videoHeight); }
-      catch (e) { return null; }
-    }
+      try {
+        updateTracks(normalize(det.detectForVideo(video, ts), video.videoWidth, video.videoHeight));
+        return tracks.map((tr) => tr.c);
+      } catch (e) { return null; }
+    },
+
+    // Call once per drawn frame: glides the faces toward their latest position, returns them
+    step() {
+      const now = performance.now();
+      const dt = Math.min(100, lastStep ? now - lastStep : 16);
+      lastStep = now;
+      ease(1 - Math.exp(-dt / 40));
+      return tracks.map((tr) => tr.c);
+    },
+
+    reset() { tracks.length = 0; }
   };
 })();
 
@@ -97,7 +167,9 @@ const AR_FILTERS = [
   { id: 'grad',     name: 'Grad cap',    icon: '🎓' },
   { id: 'catears',  name: 'Cat ears',    icon: '🐱' },
   { id: 'clown',    name: 'Clown nose',  icon: '🤡' },
-  { id: 'catface',  name: 'Cat face',    icon: '😺' }
+  { id: 'catface',  name: 'Cat face',    icon: '😺' },
+  { id: 'bunny',    name: 'Bunny ears',  icon: '🐰' },
+  { id: 'floppy',   name: 'Floppy ears', icon: '🐇' }
 ];
 
 const AR_EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
@@ -200,12 +272,58 @@ function drawArFace(ctx, face, id) {
       ctx.restore();
       break;
     }
+    case 'bunny':  drawBunnyEars(ctx, g, false); break;
+    case 'floppy': drawBunnyEars(ctx, g, true);  break;
     case 'catface': {
       const c = { x: (g.ec.x + g.nose.x) / 2, y: (g.ec.y + g.nose.y) / 2 };
       arEmoji(ctx, '😺', c.x, c.y, g.fw * 1.5, g.angle);
       break;
     }
   }
+}
+
+// One fluffy bunny ear drawn pointing "up" (negative y) from its base at (0,0)
+function arBunnyEar(ctx, w, h) {
+  const shape = (ew, eh, y0) => {
+    ctx.beginPath();
+    ctx.moveTo(-ew / 2, y0);
+    ctx.bezierCurveTo(-ew * 0.75, y0 - eh * 0.5, -ew * 0.5, y0 - eh, 0, y0 - eh);
+    ctx.bezierCurveTo(ew * 0.5, y0 - eh, ew * 0.75, y0 - eh * 0.5, ew / 2, y0);
+    ctx.closePath();
+  };
+  shape(w, h, 0);                                   // fluffy outer ear
+  ctx.fillStyle = '#f3f6f6'; ctx.fill();
+  ctx.lineWidth = Math.max(1.5, w * 0.07); ctx.strokeStyle = '#c9d6d6'; ctx.stroke();
+  shape(w * 0.52, h * 0.78, -h * 0.05);             // pink inner ear
+  const g = ctx.createLinearGradient(0, 0, 0, -h);
+  g.addColorStop(0, '#e86f9a'); g.addColorStop(1, '#f7a8c4');
+  ctx.fillStyle = g; ctx.fill();
+}
+
+// Bunny ears on a headband (ears only - no nose). floppy = ears droop to the sides.
+function drawBunnyEars(ctx, g, floppy) {
+  const fw = g.fw, fh = g.fh;
+  ctx.save();
+  ctx.translate(g.ec.x, g.ec.y);
+  ctx.rotate(g.angle);                              // local frame: x = along the eyes, -y = up
+  const cy = -fh * 0.15, rx = fw * 0.56, ry = fh * 0.47;
+  const onBand = (x) => cy - ry * Math.sqrt(Math.max(0, 1 - (x / rx) * (x / rx)));
+
+  [-1, 1].forEach((side) => {                       // ears sit behind the band
+    const x = side * fw * (floppy ? 0.3 : 0.2);
+    ctx.save();
+    ctx.translate(x, onBand(x) + fh * 0.02);
+    ctx.rotate(floppy ? side * 1.2 : side * 0.14);
+    arBunnyEar(ctx, fw * (floppy ? 0.34 : 0.28), fw * (floppy ? 0.62 : 0.85));
+    ctx.restore();
+  });
+
+  ctx.lineCap = 'round';                            // headband on top of the ear bases
+  ctx.beginPath();
+  ctx.ellipse(0, cy, rx, ry, 0, Math.PI, Math.PI * 2);
+  ctx.lineWidth = fw * 0.055; ctx.strokeStyle = '#e6eded'; ctx.stroke();
+  ctx.lineWidth = fw * 0.02;  ctx.strokeStyle = '#f08bb0'; ctx.stroke();
+  ctx.restore();
 }
 
 function drawArFaces(ctx, faces, id) {

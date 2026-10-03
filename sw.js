@@ -3,7 +3,7 @@
 // * Same-origin files: network first (always fresh when online), cache as fallback.
 // * Face-AI library/model from CDNs: cached the first time they are used, then cache first.
 // * Cloud sync (Supabase) requests are never cached - the app queues changes while offline.
-const VERSION = 'v5';
+const VERSION = 'v7';
 const CACHE = 'timeless-strips-' + VERSION;
 const CDN_HOSTS = ['cdn.jsdelivr.net', 'storage.googleapis.com'];
 
