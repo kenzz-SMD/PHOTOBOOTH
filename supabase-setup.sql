@@ -22,7 +22,7 @@ create table if not exists public.ts_admins (email text primary key);
 alter table public.ts_admins enable row level security;     -- no policies: nobody can read/edit it from the app
 
 -- >>> CHANGE THIS to the email of the admin user you create in Authentication -> Users <<<
-insert into public.ts_admins (email) values ('admin@example.com') on conflict do nothing;
+insert into public.ts_admins (email) values ('beryangii@shaun.com') on conflict do nothing;
 
 create or replace function public.ts_is_admin() returns boolean
 language sql security definer stable set search_path = public as $$
