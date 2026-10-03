@@ -17,15 +17,31 @@
   $('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (typeof CloudSync === 'undefined' || !CloudSync.getConfig()) { msg.textContent = 'Cloud is not configured.'; return; }
+    const card = $('login-form'), btn = $('login-btn');
+    card.classList.remove('shake');
+    msg.className = 'muted small';
     msg.textContent = 'Signing in…';
+    btn.disabled = true; btn.classList.add('loading'); btn.textContent = 'Signing in';
     try {
       await CloudSync.login($('login-email').value.trim(), $('login-pass').value);
       $('login-pass').value = '';
-      msg.textContent = '';
-      unlock();
+      msg.textContent = 'Welcome back! ✨';
+      card.classList.add('success');
+      setTimeout(() => { unlock(); card.classList.remove('success'); }, 650);
     } catch (err) {
+      msg.className = 'small login-err';
       msg.textContent = err.message;
+      void card.offsetWidth;                 // restart the shake animation
+      card.classList.add('shake');
+    } finally {
+      btn.disabled = false; btn.classList.remove('loading'); btn.textContent = 'Sign in';
     }
+  });
+
+  $('pw-toggle').addEventListener('click', () => {
+    const p = $('login-pass'), show = p.type === 'password';
+    p.type = show ? 'text' : 'password';
+    $('pw-toggle').textContent = show ? '🙈' : '👁️';
   });
 
   $('logout-btn').addEventListener('click', () => { CloudSync.logout(); location.reload(); });

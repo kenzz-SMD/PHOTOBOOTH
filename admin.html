@@ -10,12 +10,19 @@
 
   <!-- Login gate: the dashboard stays hidden until an admin signs in -->
   <section id="login" class="login-wrap">
+    <div class="floaties" aria-hidden="true">
+      <span>📸</span><span>✨</span><span>🎞️</span><span>💖</span><span>🐰</span><span>⭐</span><span>🎀</span><span>📷</span>
+    </div>
     <form id="login-form" class="card login-card">
-      <h2>🔒 Admin login</h2>
+      <div class="login-badge" aria-hidden="true">🔒</div>
+      <h2>Admin login</h2>
       <p class="muted small">Only booth admins can manage templates. Guests use the photobooth link.</p>
-      <label>Email<input id="login-email" type="email" autocomplete="username" required></label>
-      <label>Password<input id="login-pass" type="password" autocomplete="current-password" required></label>
-      <button class="btn" type="submit">Sign in</button>
+      <label class="lf">Email<input id="login-email" type="email" autocomplete="username" placeholder="you@example.com" required></label>
+      <label class="lf">Password
+        <span class="pw-wrap"><input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••" required>
+        <button type="button" id="pw-toggle" class="pw-toggle" aria-label="Show password">👁️</button></span>
+      </label>
+      <button id="login-btn" class="btn" type="submit">Sign in</button>
       <p id="login-msg" class="muted small"></p>
     </form>
   </section>

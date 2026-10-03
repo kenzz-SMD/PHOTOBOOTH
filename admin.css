@@ -250,3 +250,153 @@ body:not(.locked) #login { display: none; }
 .login-card h2 { margin: 0; }
 .login-card label { display: grid; gap: 4px; font-size: 14px; font-weight: 600; }
 .login-card input { padding: 10px 12px; border: 1px solid #d9c7b5; border-radius: 8px; font: inherit; font-weight: 400; }
+
+/* =====================================================
+   LIVELY ADMIN: animated login + polished dashboard
+   ===================================================== */
+
+/* ---- login screen ---- */
+.login-wrap {
+  position: relative; overflow: hidden;
+  background: linear-gradient(120deg, #ffe3cf, #ffd1dc, #e5d4ff, #cdf5ea, #ffe3cf);
+  background-size: 300% 300%;
+  animation: bgShift 14s ease infinite;
+}
+@keyframes bgShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+
+.floaties span {
+  position: absolute; bottom: -60px; font-size: 34px; opacity: 0;
+  animation: rise 12s linear infinite;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .12));
+}
+.floaties span:nth-child(1) { left: 6%;  animation-delay: 0s;  font-size: 38px; }
+.floaties span:nth-child(2) { left: 18%; animation-delay: 2.5s; font-size: 26px; }
+.floaties span:nth-child(3) { left: 31%; animation-delay: 5s;  font-size: 34px; }
+.floaties span:nth-child(4) { left: 46%; animation-delay: 1.2s; font-size: 28px; }
+.floaties span:nth-child(5) { left: 60%; animation-delay: 6.5s; font-size: 40px; }
+.floaties span:nth-child(6) { left: 72%; animation-delay: 3.6s; font-size: 26px; }
+.floaties span:nth-child(7) { left: 84%; animation-delay: 8s;  font-size: 34px; }
+.floaties span:nth-child(8) { left: 93%; animation-delay: 4.4s; font-size: 30px; }
+@keyframes rise {
+  0%   { transform: translateY(0) rotate(0) scale(.8); opacity: 0; }
+  10%  { opacity: .9; }
+  50%  { transform: translateY(-55vh) translateX(18px) rotate(14deg) scale(1.05); }
+  90%  { opacity: .8; }
+  100% { transform: translateY(-115vh) translateX(-14px) rotate(-12deg) scale(1); opacity: 0; }
+}
+
+.login-card {
+  position: relative; z-index: 1;
+  max-width: 400px; padding: 34px 28px 26px; gap: 14px; text-align: center;
+  background: rgba(255, 255, 255, .82);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border: 1.5px solid rgba(255, 255, 255, .9);
+  border-radius: 28px;
+  box-shadow: 0 24px 60px rgba(150, 60, 0, .2), 0 0 0 6px rgba(255, 255, 255, .35);
+  animation: cardRise .8s cubic-bezier(.2, 1.3, .4, 1) both;
+}
+@keyframes cardRise { from { opacity: 0; transform: translateY(40px) scale(.92); } }
+
+.login-badge {
+  width: 74px; height: 74px; margin: -66px auto 4px;
+  display: grid; place-items: center; font-size: 36px;
+  background: linear-gradient(135deg, #ff9a56, #ff6b81);
+  border-radius: 50%;
+  box-shadow: 0 10px 24px rgba(255, 107, 129, .5), 0 0 0 6px #fff;
+  animation: badgeBob 3s ease-in-out infinite;
+}
+@keyframes badgeBob { 0%, 100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-7px) rotate(4deg); } }
+.login-card h2 {
+  font-size: 28px; margin: 6px 0 0;
+  background: linear-gradient(90deg, #ff6b81, #ff9a56, #a855f7);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.login-card .lf { text-align: left; animation: fieldIn .6s cubic-bezier(.3, 1.4, .5, 1) backwards; }
+.login-card .lf:nth-of-type(1) { animation-delay: .25s; }
+.login-card .lf:nth-of-type(2) { animation-delay: .35s; }
+@keyframes fieldIn { from { opacity: 0; transform: translateX(-24px); } }
+.login-card input {
+  width: 100%; padding: 12px 14px; font-size: 15px;
+  border: 2px solid #f1d9c8; border-radius: 14px; background: #fff;
+  transition: border-color .2s, box-shadow .25s, transform .2s;
+}
+.login-card input:focus {
+  outline: none; border-color: #ff8fab;
+  box-shadow: 0 0 0 5px rgba(255, 143, 171, .25); transform: translateY(-1px);
+}
+.pw-wrap { position: relative; display: block; }
+.pw-wrap input { padding-right: 46px; }
+.pw-toggle {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  border: none; background: none; font-size: 18px; cursor: pointer; padding: 4px 6px;
+  transition: transform .2s cubic-bezier(.3, 1.8, .5, 1);
+}
+.pw-toggle:hover { transform: translateY(-50%) scale(1.25) rotate(8deg); }
+
+.login-card .btn {
+  position: relative; overflow: hidden;
+  padding: 14px; font-size: 17px; font-weight: 700; border-radius: 999px;
+  background: linear-gradient(135deg, #ff8fab, #ff5d7a);
+  box-shadow: 0 5px 0 rgba(0, 0, 0, .16), 0 12px 22px rgba(255, 93, 122, .4);
+  transition: transform .15s cubic-bezier(.3, 1.6, .5, 1), box-shadow .15s, filter .15s;
+  animation: fieldIn .6s cubic-bezier(.3, 1.4, .5, 1) .45s backwards;
+}
+.login-card .btn::after {
+  content: ''; position: absolute; top: 0; left: -80%; width: 50%; height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .55), transparent);
+  transform: skewX(-20deg);
+}
+.login-card .btn:hover:not(:disabled) { transform: translateY(-3px) scale(1.03); filter: brightness(1.06); }
+.login-card .btn:hover:not(:disabled)::after { animation: shineA .7s ease; }
+.login-card .btn:active:not(:disabled) { transform: translateY(3px) scale(.97); box-shadow: 0 1px 0 rgba(0, 0, 0, .2); }
+.login-card .btn:disabled { cursor: wait; opacity: .85; }
+.login-card .btn.loading::before {
+  content: ''; display: inline-block; width: 14px; height: 14px; margin-right: 8px; vertical-align: -2px;
+  border: 2.5px solid rgba(255, 255, 255, .5); border-top-color: #fff; border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes shineA { to { left: 130%; } }
+
+.login-err { color: #c2415f; font-weight: 600; }
+.login-card.shake { animation: shake .5s cubic-bezier(.36, .07, .19, .97); }
+@keyframes shake {
+  10%, 90% { transform: translateX(-2px); } 20%, 80% { transform: translateX(5px); }
+  30%, 50%, 70% { transform: translateX(-9px); } 40%, 60% { transform: translateX(9px); }
+}
+.login-card.success { animation: successOut .65s ease forwards; }
+@keyframes successOut { 40% { transform: scale(1.04); } 100% { transform: scale(.9) translateY(-20px); opacity: 0; } }
+
+/* ---- dashboard polish ---- */
+body:not(.locked) .top {
+  background: linear-gradient(120deg, #ff9a56, #ff7aa2, #b983ff, #ff9a56);
+  background-size: 300% 300%; animation: bgShift 12s ease infinite, dropIn .6s cubic-bezier(.2, 1.2, .4, 1) both;
+}
+@keyframes dropIn { from { transform: translateY(-100%); opacity: 0; } }
+body:not(.locked) main > .card { animation: cardRise .6s cubic-bezier(.2, 1.2, .4, 1) backwards; }
+main > .card:nth-child(2) { animation-delay: .12s !important; }
+main > .card:nth-child(3) { animation-delay: .24s !important; }
+.card { transition: transform .25s, box-shadow .25s; }
+.card:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(150, 60, 0, .18); }
+
+.btn { transition: transform .15s cubic-bezier(.3, 1.6, .5, 1), filter .15s, box-shadow .15s; }
+.btn:hover { transform: translateY(-2px) scale(1.04); }
+.btn:active { transform: scale(.96); }
+
+#dropzone { transition: transform .25s, background .2s, border-color .2s; }
+#dropzone:hover { transform: scale(1.01); border-color: #ff8fab; }
+#dropzone.over { transform: scale(1.03); animation: pulseBorder 1s ease infinite; }
+@keyframes pulseBorder { 50% { box-shadow: 0 0 0 10px rgba(255, 143, 171, .25); } }
+
+.tcard { transition: transform .3s cubic-bezier(.3, 1.5, .5, 1), box-shadow .3s; animation: cardRise .5s cubic-bezier(.3, 1.4, .5, 1) backwards; }
+.tcard:nth-child(2) { animation-delay: .06s; } .tcard:nth-child(3) { animation-delay: .12s; }
+.tcard:nth-child(4) { animation-delay: .18s; } .tcard:nth-child(5) { animation-delay: .24s; }
+.tcard:hover { transform: translateY(-6px) rotate(-.6deg); box-shadow: 0 16px 30px rgba(150, 60, 0, .2); }
+#cloud-pill.ok { animation: livePulse 2s ease-in-out infinite; }
+@keyframes livePulse { 50% { box-shadow: 0 0 0 7px rgba(46, 158, 91, 0); } 0% { box-shadow: 0 0 0 0 rgba(46, 158, 91, .5); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .login-wrap, .floaties span, .login-card, .login-badge, .login-card .lf, .login-card .btn,
+  body:not(.locked) .top, body:not(.locked) main > .card, .tcard, #cloud-pill.ok { animation: none !important; }
+  .floaties { display: none; }
+}
