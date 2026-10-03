@@ -1201,4 +1201,8 @@ function playShutter() {
 })();
 
 // ===================== START =====================
+<<<<<<< HEAD
 buildStickerPalette();
+=======
+buildStickerPalette();
+>>>>>>> a50aee270b8b508f8ed2d8efe72a1617d155fbd2
