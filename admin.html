@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin · Timeless Strips</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+
+  <header class="top">
+    <h1>Timeless Strips <span>Admin</span></h1>
+    <div class="top-actions">
+      <a class="btn ghost" href="index.html">← Photobooth</a>
+      <button id="export-btn" class="btn ghost">⬇ Export</button>
+      <button id="import-btn" class="btn ghost">⬆ Import</button>
+      <input type="file" id="import-input" accept="application/json,.json" hidden>
+    </div>
+  </header>
+
+  <main>
+    <!-- 1. Upload -->
+    <section class="card">
+      <h2>Upload templates</h2>
+      <div id="dropzone" tabindex="0">
+        <p class="dz-title"><b>Drag &amp; drop</b> PNG or JPG templates here</p>
+        <p class="muted">or</p>
+        <button id="pick-btn" class="btn">Choose files</button>
+        <input type="file" id="file-input" accept="image/png,image/jpeg" multiple hidden>
+      </div>
+      <label class="check">
+        <input type="checkbox" id="opt-transparent" checked>
+        Make detected white photo boxes transparent
+      </label>
+      <p class="muted small">
+        Each template is resized to 600×1800 (2×6 in), optimized, and its photo windows are
+        detected automatically. You can fine-tune them with <b>Edit</b>.
+      </p>
+      <div id="upload-log"></div>
+    </section>
+
+    <!-- 2. Template list -->
+    <section class="card">
+      <h2>Templates <span id="count" class="pill"></span></h2>
+      <div id="grid"></div>
+      <p class="muted small" id="sync-note">
+        Uploaded templates are saved in this browser. The photobooth opened in the same browser
+        loads them automatically. To use them on another device, use <b>Export</b> here and
+        <b>Import</b> there.
+      </p>
+    </section>
+  </main>
+
+  <!-- Confirm dialog -->
+  <dialog id="confirm-dlg">
+    <h3 id="cf-title">Delete template?</h3>
+    <p id="cf-msg"></p>
+    <div class="dlg-foot">
+      <button id="cf-no" class="btn ghost">Cancel</button>
+      <button id="cf-yes" class="btn danger">Delete</button>
+    </div>
+  </dialog>
+
+  <!-- Edit dialog -->
+  <dialog id="edit-dlg">
+    <div class="dlg-head">
+      <h3>Edit template</h3>
+      <button id="ed-close" class="icon-btn" aria-label="Close">✕</button>
+    </div>
+    <div class="dlg-body">
+      <div class="ed-left">
+        <div id="ed-wrap"><div id="ed-stage"></div></div>
+      </div>
+      <div class="ed-right">
+        <label class="field">Name
+          <input id="ed-name" type="text" maxlength="40">
+        </label>
+        <p class="muted small" id="ed-info"></p>
+        <p class="muted small">Drag a box to move it, drag its corner to resize, or type exact numbers.</p>
+        <table id="ed-table">
+          <thead><tr><th>#</th><th>X</th><th>Y</th><th>W</th><th>H</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="row">
+          <button id="ed-add" class="btn ghost">+ Add slot</button>
+          <button id="ed-detect" class="btn ghost">🔍 Auto-detect</button>
+        </div>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button id="ed-cancel" class="btn ghost">Cancel</button>
+      <button id="ed-save" class="btn">Save changes</button>
+    </div>
+  </dialog>
+
+  <div id="toast" popover="manual" role="status"></div>
+
+  <script src="templates-store.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>
