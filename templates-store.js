@@ -173,22 +173,23 @@ const CloudSync = (() => {
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
   };
 
-  let status = { state: 'off', msg: '', last: ls.get('ts-cloud-last', 0) };
+  let status = { state: 'off', msg: '', last: ls.get('ts-cloud-last', 0), live: false };
   const statusCbs = [], pulledCbs = [];
   let running = false, again = false, timer = null, debounce = null;
 
-  // Site-wide settings (cloud-config.js, deployed with the site) apply to EVERY device.
-  // Settings typed into the admin card on this device override them.
+  // A device's own saved setting (Admin page) wins; otherwise use the shared cloud-config.js
   const getConfig = () => {
-    const site = (typeof window !== 'undefined' && window.TS_CLOUD_CONFIG) || null;
-    const local = ls.get(CFG_KEY, null);
-    if (!site && !local) return null;
-    return Object.assign({ enabled: true }, site || {}, local || {});
+    const saved = ls.get(CFG_KEY, null);
+    if (saved) return saved;
+    const d = (typeof window !== 'undefined' && window.CLOUD_CONFIG) || null;
+    return d && d.url && d.key && d.lib ? Object.assign({ enabled: true }, d) : null;
   };
+  // Kinds of records this device syncs (strips only if syncStrips !== false)
+  const kinds = () => Object.keys(KINDS).filter((k) => k !== 'strip' || (getConfig() || {}).syncStrips !== false);
   const enabled = () => { const c = getConfig(); return !!(c && c.enabled && c.url && c.key && c.lib); };
 
   function setStatus(state, msg) {
-    status = { state, msg: msg || '', last: status.last };
+    status = { state, msg: msg || '', last: status.last, live: status.live };
     statusCbs.forEach((cb) => { try { cb(status); } catch (e) {} });
   }
 
@@ -231,7 +232,7 @@ const CloudSync = (() => {
     const pushed = ls.get(PUSHED_KEY, {});
     const tombs = ls.get(TOMB_KEY, {});
 
-    for (const kind of Object.keys(KINDS)) {
+    for (const kind of kinds()) {
       const recs = await TemplateStore._run(KINDS[kind], 'readonly', (s) => s.getAll()) || [];
       for (const rec of recs) {
         const key = kind + ':' + rec.id;
@@ -257,9 +258,15 @@ const CloudSync = (() => {
     const c = getConfig();
     const first = !ls.get(CURSOR_KEY, 0);
     const since = Math.max(0, ls.get(CURSOR_KEY, 0) - 60000);   // overlap: clocks differ a bit
-    const url = base() + '/rest/v1/ts_items?lib=eq.' + encodeURIComponent(c.lib) +
-      '&updated_at=gt.' + since + '&order=updated_at.asc&limit=500&select=id,kind,data,deleted,updated_at';
-    const rows = await (await check(await fetch(url, { headers: hdr() }), 'Download')).json();
+    let rows = [], from = since;
+    for (;;) {   // page through everything newer than the cursor (500 rows per request)
+      const url = base() + '/rest/v1/ts_items?lib=eq.' + encodeURIComponent(c.lib) +
+        '&updated_at=gt.' + from + '&order=updated_at.asc&limit=500&select=id,kind,data,deleted,updated_at';
+      const page = await (await check(await fetch(url, { headers: hdr() }), 'Download')).json();
+      rows = rows.concat(page);
+      if (page.length < 500) break;
+      from = page[page.length - 1].updated_at;
+    }
 
     const pushed = ls.get(PUSHED_KEY, {});
     let changed = false, maxTs = ls.get(CURSOR_KEY, 0);
@@ -272,7 +279,7 @@ const CloudSync = (() => {
     for (const row of rows) {
       maxTs = Math.max(maxTs, row.updated_at);
       const kind = row.kind, store = KINDS[kind];
-      if (!store) continue;
+      if (!store || !kinds().includes(kind)) continue;
       const key = kind + ':' + row.id;
       const local = await TemplateStore._run(store, 'readonly', (s) => s.get(row.id));
       const localVer = local ? (local.updatedAt || local.createdAt || 1) : 0;
@@ -308,10 +315,8 @@ const CloudSync = (() => {
     running = true; again = false;
     setStatus('syncing');
     try {
-      let changed = false, firstErr = null;
-      try { await pushAll(); } catch (e) { firstErr = e; }
-      try { changed = await pullAll(); } catch (e) { firstErr = firstErr || e; }
-      if (firstErr) throw firstErr;
+      const changed = await pullAll();
+      await pushAll();
       status.last = Date.now(); ls.set('ts-cloud-last', status.last);
       setStatus('ok');
       if (changed) pulledCbs.forEach((cb) => { try { cb(); } catch (e) {} });
@@ -326,13 +331,78 @@ const CloudSync = (() => {
     }
   }
 
-  function schedule() {
-    clearInterval(timer);
-    if (enabled()) timer = setInterval(() => { if (!document.hidden) sync(); }, 15000);
+  // ---- Realtime: Supabase Realtime over a WebSocket (Phoenix protocol, no library) ----
+  // When another device writes to ts_items we get a push and sync immediately.
+  // Polling stays as a slow safety net, and as the main path if the socket can't connect.
+  const RT_TOPIC = 'realtime:ts-items';
+  let ws = null, wsTimer = null, wsBeat = null, wsRetry = 0, wsRef = 0, wsDebounce = null;
+
+  function setLive(v) {
+    if (status.live === v) return;
+    status = Object.assign({}, status, { live: v });
+    statusCbs.forEach((cb) => { try { cb(status); } catch (e) {} });
+  }
+  function closeRealtime() {
+    clearTimeout(wsTimer); clearInterval(wsBeat);
+    if (ws) { ws.onclose = null; try { ws.close(); } catch (e) {} ws = null; }
+    setLive(false);
+  }
+  function openRealtime() {
+    closeRealtime();
+    if (!enabled() || !navigator.onLine || typeof WebSocket === 'undefined') return;
+    const c = getConfig();
+    let sock;
+    try {
+      sock = new WebSocket(base().replace(/^http/, 'ws') + '/realtime/v1/websocket?apikey=' +
+        encodeURIComponent(c.key) + '&vsn=1.0.0');
+    } catch (e) { return; }
+    ws = sock;
+    const send = (topic, event, payload) => {
+      if (sock.readyState === 1) sock.send(JSON.stringify({ topic, event, payload, ref: String(++wsRef) }));
+    };
+    sock.onopen = () => {
+      send(RT_TOPIC, 'phx_join', {
+        config: {
+          broadcast: { self: false }, presence: { key: '' },
+          postgres_changes: [{ event: '*', schema: 'public', table: 'ts_items', filter: 'lib=eq.' + c.lib }]
+        },
+        access_token: c.key
+      });
+      wsBeat = setInterval(() => send('phoenix', 'heartbeat', {}), 25000);
+    };
+    sock.onmessage = (ev) => {
+      let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (m.event === 'phx_reply' && m.topic === RT_TOPIC) {
+        if (m.payload && m.payload.status === 'ok') { wsRetry = 0; setLive(true); sync(); }
+        else setLive(false);
+      } else if (m.event === 'postgres_changes') {
+        clearTimeout(wsDebounce); wsDebounce = setTimeout(sync, 250);
+      } else if (m.event === 'phx_error' || m.event === 'phx_close') {
+        sock.close();
+      }
+    };
+    sock.onclose = () => {
+      clearInterval(wsBeat);
+      if (ws !== sock) return;
+      ws = null; setLive(false);
+      wsTimer = setTimeout(openRealtime, Math.min(30000, 1000 * Math.pow(2, wsRetry++)));
+    };
+    sock.onerror = () => {};
   }
 
-  window.addEventListener('online', () => sync());
-  window.addEventListener('offline', () => setStatus(enabled() ? 'offline' : 'off'));
+  let tick = 0;
+  function schedule() {
+    clearInterval(timer);
+    // while the live socket is up, poll only every ~2 minutes as a safety net
+    if (enabled()) timer = setInterval(() => {
+      if (document.hidden) return;
+      if (status.live && ++tick % 4) return;
+      sync();
+    }, 30000);
+  }
+
+  window.addEventListener('online', () => { sync(); openRealtime(); });
+  window.addEventListener('offline', () => { closeRealtime(); setStatus(enabled() ? 'offline' : 'off'); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(); });
 
   return {
@@ -349,9 +419,10 @@ const CloudSync = (() => {
       }
       ls.set(CFG_KEY, next);
       schedule();
+      openRealtime();
       return sync();
     },
-    disable() { const c = Object.assign({}, getConfig() || {}, { enabled: false }); ls.set(CFG_KEY, c); clearInterval(timer); setStatus('off'); },
+    disable() { const c = getConfig(); if (c) { c.enabled = false; ls.set(CFG_KEY, c); } clearInterval(timer); closeRealtime(); setStatus('off'); },
 
     sync,
     queue() { clearTimeout(debounce); debounce = setTimeout(sync, 800); },
@@ -367,7 +438,7 @@ const CloudSync = (() => {
       await check(res, 'Connection');
       return true;
     },
-    start() { schedule(); if (enabled()) sync(); else setStatus('off'); }
+    start() { schedule(); if (enabled()) { sync(); openRealtime(); } else setStatus('off'); }
   };
 })();
 

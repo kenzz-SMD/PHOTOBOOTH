@@ -635,7 +635,7 @@ renderGrid();
 
   CloudSync.onStatus((st) => {
     pill.className = 'pill ' + st.state;
-    pill.textContent = { off: 'off', syncing: 'syncing…', ok: 'synced', offline: 'offline', error: 'error' }[st.state] || st.state;
+    pill.textContent = { off: 'off', syncing: 'syncing…', ok: st.live ? '● live' : 'synced', offline: 'offline', error: 'error' }[st.state] || st.state;
     msg.textContent = st.state === 'error' ? st.msg
       : st.last ? 'Last synced ' + new Date(st.last).toLocaleString() : '';
   });
@@ -653,17 +653,6 @@ renderGrid();
     }
     await CloudSync.configure(Object.assign(c, { enabled: true }));
     toast('Cloud sync is on.');
-  };
-  $('cloud-dl').onclick = () => {
-    const c = { enabled: true, url: url.value.trim(), key: key.value.trim(), lib: lib.value.trim() };
-    if (!c.url || !c.key || !c.lib) { toast('Fill in all three fields first.'); return; }
-    const text = '// Site-wide cloud settings: deploy next to index.html so every device syncs.\n' +
-      'window.TS_CLOUD_CONFIG = ' + JSON.stringify(c, null, 2) + ';\n';
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([text], { type: 'text/javascript' }));
-    a.download = 'cloud-config.js';
-    document.body.appendChild(a); a.click(); a.remove();
-    toast('Upload this file to your site to enable sync on all devices.');
   };
   $('cloud-now').onclick = () => CloudSync.sync();
   $('cloud-off').onclick = () => { CloudSync.disable(); toast('Cloud sync turned off.'); };

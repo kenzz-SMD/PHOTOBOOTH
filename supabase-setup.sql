@@ -39,5 +39,11 @@ create policy "ts files update" on storage.objects for update to anon
 create policy "ts files read"   on storage.objects for select to anon
   using (bucket_id = 'timeless-strips');
 
+-- 3) Real-time: push row changes to every connected device instantly
+do $$ begin
+  alter publication supabase_realtime add table public.ts_items;
+exception when duplicate_object then null;
+end $$;
+
 -- NOTE: the anon key is visible to anyone who opens the site, so treat the library
 -- code like a password: pick a long random one and don't share it publicly.

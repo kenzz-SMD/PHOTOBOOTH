@@ -1398,7 +1398,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     let cls = online ? 'net-online' : 'net-offline';
     if (typeof CloudSync !== 'undefined' && CloudSync.enabled()) {
       if (cloud.state === 'syncing') text += ' · ☁ syncing…';
-      else if (cloud.state === 'ok') text += ' · ☁ synced';
+      else if (cloud.state === 'ok') text += cloud.live ? ' · ☁ live' : ' · ☁ synced';
       else if (cloud.state === 'error') { text += ' · ☁ sync error'; cls = 'net-error'; }
       else if (!online) text += ' · ☁ will sync later';
     }
