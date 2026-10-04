@@ -1,0 +1,140 @@
+/* =====================================================================
+   ADMIN FX LAYER  (extra animations on top of admin.css)
+   Add ONE line to admin.html, after admin.css:
+       <link rel="stylesheet" href="admin-fx.css">
+   Everything is scoped to the unlocked dashboard, so the login screen is untouched.
+   Turn it all off with the ✨ button (bottom-left) or the system "reduce motion" setting.
+   ===================================================================== */
+:root {
+  --afx-peach: #ff9a56; --afx-pink: #ff7aa2; --afx-violet: #b983ff; --afx-mint: #3fd6a0;
+}
+@property --afx-ang { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+
+/* ---------- aurora: big soft colour blobs drifting behind everything ---------- */
+.afx-aurora { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; display: none; }
+body:not(.locked) .afx-aurora { display: block; }
+.afx-aurora i { position: absolute; width: 48vmax; height: 48vmax; border-radius: 50%; filter: blur(80px); opacity: .42; will-change: transform; }
+.afx-aurora i:nth-child(1) { background: radial-gradient(circle, #ffb27a, transparent 66%); left: -14vmax; top: -12vmax; animation: afxDrift1 28s ease-in-out infinite alternate; }
+.afx-aurora i:nth-child(2) { background: radial-gradient(circle, #ff9ec0, transparent 66%); right: -16vmax; top: 14vh; animation: afxDrift2 34s ease-in-out infinite alternate; }
+.afx-aurora i:nth-child(3) { background: radial-gradient(circle, #c9a8ff, transparent 66%); left: 18vw; bottom: -24vmax; animation: afxDrift3 40s ease-in-out infinite alternate; }
+.afx-aurora i:nth-child(4) { background: radial-gradient(circle, #8ff0cf, transparent 66%); width: 30vmax; height: 30vmax; right: 12vw; bottom: 4vh; opacity: .26; animation: afxDrift1 46s ease-in-out infinite alternate-reverse; }
+@keyframes afxDrift1 { to { transform: translate(22vw, 14vh) scale(1.18); } }
+@keyframes afxDrift2 { to { transform: translate(-20vw, 18vh) scale(.88); } }
+@keyframes afxDrift3 { to { transform: translate(16vw, -20vh) scale(1.12); } }
+
+/* ---------- scroll progress ribbon ---------- */
+.afx-progress {
+  position: fixed; left: 0; top: 0; width: 100%; height: 4px; z-index: 10000; display: none;
+  transform-origin: 0 50%; transform: scaleX(var(--p, 0)); border-radius: 0 6px 6px 0;
+  background: linear-gradient(90deg, var(--afx-peach), var(--afx-pink), var(--afx-violet));
+  box-shadow: 0 0 14px rgba(255, 122, 162, .75);
+}
+body:not(.locked) .afx-progress { display: block; }
+
+/* ---------- cards: cursor spotlight + spinning rainbow edge on hover ---------- */
+body:not(.locked) main > .card { position: relative; isolation: isolate; }
+body:not(.locked) main > .card::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1;
+  opacity: 0; transition: opacity .35s;
+  background: radial-gradient(460px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 154, 86, .16), rgba(185, 131, 255, .09) 42%, transparent 72%);
+}
+body:not(.locked) main > .card::after {
+  content: ''; position: absolute; inset: -2px; border-radius: inherit; padding: 2px; pointer-events: none; z-index: -1;
+  opacity: 0; transition: opacity .4s;
+  background: conic-gradient(from var(--afx-ang), #ff9a56, #ff7aa2, #b983ff, #3fd6a0, #ff9a56);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+}
+@media (hover: hover) {
+  body:not(.locked) main > .card:hover::before { opacity: 1; }
+  body:not(.locked) main > .card:hover::after  { opacity: .9; animation: afxSpin 5s linear infinite; }
+}
+@keyframes afxSpin { to { --afx-ang: 360deg; } }
+
+/* ---------- template cards: 3D tilt + light glare that follows the pointer ---------- */
+@media (hover: hover) and (pointer: fine) {
+  body:not(.locked) .tcard { transform-style: preserve-3d; position: relative; }
+  body:not(.locked) .tcard:hover {
+    transform: perspective(820px) translateY(-8px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) scale(1.025);
+    transition: transform .12s ease-out, box-shadow .3s;
+  }
+  body:not(.locked) .tcard::after {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .25s;
+    background: radial-gradient(240px circle at var(--gx, 50%) var(--gy, 0%), rgba(255, 255, 255, .55), transparent 60%);
+  }
+  body:not(.locked) .tcard:hover::after { opacity: 1; }
+}
+
+/* ---------- live numbers pop when they change ---------- */
+.afx-bump { animation: afxBump .55s cubic-bezier(.3, 1.8, .5, 1); display: inline-block; }
+@keyframes afxBump { 40% { transform: scale(1.28); } }
+
+/* ---------- devices card: shimmering hero ---------- */
+#dev-card .dv-hero { background-size: 220% 220%; animation: afxHero 11s ease-in-out infinite; position: relative; overflow: hidden; }
+#dev-card .dv-hero::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: -40%; width: 30%; transform: skewX(-18deg); pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .55), transparent); animation: afxSweep 7s ease-in-out infinite 1.5s;
+}
+@keyframes afxHero  { 50% { background-position: 100% 60%; } }
+@keyframes afxSweep { 0%, 55% { left: -40%; } 100% { left: 140%; } }
+#dev-card .dv-stats > div { transition: transform .25s cubic-bezier(.3, 1.6, .5, 1), box-shadow .25s; }
+#dev-card .dv-stats > div:hover { transform: translateY(-5px) scale(1.06); box-shadow: 0 12px 22px rgba(150, 60, 100, .18); }
+#dev-card .dv-admins, #dv-admins { min-height: 1em; margin-top: 4px; }
+#dv-table tr.on td:first-child { box-shadow: inset 3px 0 0 var(--afx-mint); }
+
+/* ---------- header greeting + camera-flash title ---------- */
+.top h1 { cursor: pointer; user-select: none; }
+.top h1 .afx-hello { display: inline-block; margin-left: 12px; font: 600 15px/1 system-ui, sans-serif; font-style: normal; letter-spacing: .2px; opacity: 0; animation: afxFade .8s .8s forwards; text-shadow: none; vertical-align: middle; }
+.afx-hello i { display: inline-block; font-style: normal; transform-origin: 70% 80%; animation: afxWave 2.6s 1.6s ease-in-out infinite; }
+@keyframes afxFade { to { opacity: .95; } }
+@keyframes afxWave { 0%, 60%, 100% { transform: rotate(0); } 10%, 30% { transform: rotate(16deg); } 20%, 40% { transform: rotate(-10deg); } 50% { transform: rotate(8deg); } }
+.afx-flash { position: fixed; inset: 0; z-index: 10002; background: #fff; pointer-events: none; animation: afxFlash .55s ease-out forwards; }
+@keyframes afxFlash { 0% { opacity: .95; } 100% { opacity: 0; } }
+@media (max-width: 760px) { .top h1 .afx-hello { display: none; } }
+
+/* ---------- toasts ---------- */
+.afx-toasts { position: fixed; right: 18px; bottom: 18px; z-index: 10001; display: grid; gap: 10px; max-width: min(92vw, 350px); pointer-events: none; }
+.afx-toast {
+  pointer-events: auto; position: relative; overflow: hidden; display: flex; align-items: center; gap: 12px;
+  padding: 13px 18px 15px 14px; border-radius: 18px; font-size: 15px; line-height: 1.3; color: #2b2118;
+  background: rgba(255, 255, 255, .94); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  box-shadow: 0 12px 32px rgba(150, 60, 0, .24), 0 0 0 1.5px rgba(255, 154, 86, .4);
+  animation: afxToastIn .55s cubic-bezier(.2, 1.4, .4, 1) both;
+}
+.afx-toast.warn { box-shadow: 0 12px 32px rgba(150, 30, 30, .22), 0 0 0 1.5px rgba(217, 58, 58, .45); }
+.afx-toast.out { animation: afxToastOut .35s ease forwards; }
+.afx-toast .t-ico { font-size: 28px; animation: afxPop .7s .1s cubic-bezier(.3, 1.8, .5, 1) backwards; }
+.afx-toast b { display: block; font-size: 15px; }
+.afx-toast small { color: #7a6a5c; font-size: 13px; }
+.afx-toast::after { content: ''; position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; transform-origin: 0 50%; background: linear-gradient(90deg, var(--afx-peach), var(--afx-pink), var(--afx-violet)); animation: afxTimer var(--dur, 4.5s) linear forwards; }
+.afx-toast.warn::after { background: #d93a3a; }
+@keyframes afxToastIn  { from { transform: translateX(120%) scale(.9); opacity: 0; } }
+@keyframes afxToastOut { to { transform: translateX(120%); opacity: 0; } }
+@keyframes afxPop      { from { transform: scale(0) rotate(-40deg); } }
+@keyframes afxTimer    { to { transform: scaleX(0); } }
+
+/* ---------- mini confetti canvas ---------- */
+#afx-canvas { position: fixed; inset: 0; z-index: 10003; pointer-events: none; }
+
+/* ---------- ✨ on/off switch ---------- */
+#afx-toggle {
+  position: fixed; left: 16px; bottom: 16px; z-index: 10001; width: 46px; height: 46px; border-radius: 50%; border: 0; display: none;
+  place-items: center; font-size: 21px; cursor: pointer; background: #fff; color: inherit;
+  box-shadow: 0 6px 18px rgba(150, 60, 0, .25), 0 0 0 1.5px rgba(255, 154, 86, .35); transition: transform .2s cubic-bezier(.3, 1.8, .5, 1);
+}
+body:not(.locked) #afx-toggle { display: grid; }
+#afx-toggle:hover { transform: scale(1.14) rotate(12deg); }
+#afx-toggle:active { transform: scale(.92); }
+
+/* ---------- animations off: the switch, or the system "reduce motion" ---------- */
+html.fx-off .afx-aurora, html.fx-off .dash-floaties, html.fx-off .afx-progress { display: none !important; }
+html.fx-off body:not(.locked) *, html.fx-off body:not(.locked) *::before, html.fx-off body:not(.locked) *::after {
+  animation: none !important; transition: none !important;
+}
+html.fx-off body:not(.locked) .tcard:hover { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .afx-aurora, .dash-floaties, .afx-progress { display: none !important; }
+  body:not(.locked) *, body:not(.locked) *::before, body:not(.locked) *::after { animation: none !important; transition: none !important; }
+  body:not(.locked) .tcard:hover { transform: none; }
+}
