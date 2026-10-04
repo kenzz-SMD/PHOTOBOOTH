@@ -3,14 +3,14 @@
 // * Same-origin files: network first (always fresh when online), cache as fallback.
 // * Face-AI library/model from CDNs: cached the first time they are used, then cache first.
 // * Cloud sync (Supabase) requests are never cached - the app queues changes while offline.
-const VERSION = 'v21';
+const VERSION = 'v22';
 const CACHE = 'timeless-strips-' + VERSION;
 const CDN_HOSTS = ['cdn.jsdelivr.net', 'storage.googleapis.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];   // fonts are cached too, so the title font also works offline
 
 const PRECACHE = [
   './', 'index.html', 'admin.html',
   'style.css', 'admin.css',
-  'script.js', 'admin.js', 'admin-auth.js', 'admin-devices.js', 'device-tracer.js', 'cloud-config.js', 'i18n.js', 'fx.js', 'share-ui.js', 'ui.css', 'get.html', 'templates-store.js', 'icons.js', 'face-engine.js',
+  'script.js', 'admin.js', 'admin-auth.js', 'admin-devices.js', 'admin-tabs.js', 'admin-fx.js', 'admin-fx.css', 'admin-theme.css', 'device-tracer.js', 'cloud-config.js', 'i18n.js', 'fx.js', 'share-ui.js', 'ui.css', 'get.html', 'templates-store.js', 'icons.js', 'face-engine.js',
   'gif-encoder.js', 'qr.js',
   'templates/template1.png', 'templates/template2.png'
 ];
