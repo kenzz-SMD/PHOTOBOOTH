@@ -39,6 +39,8 @@ const STORE_OK = (typeof TemplateStore !== 'undefined' && typeof StripStore !== 
 const TEMPLATES = (typeof BUILTIN_TEMPLATES !== 'undefined') ? BUILTIN_TEMPLATES : FALLBACK_TEMPLATES;
 let allTemplates = TEMPLATES.slice();
 let selectedTemplate = null;
+let allCategories = [];        // effective categories (defaults + admin changes)
+let activeCategory = 'all';    // 'all' or a category id
 
 // ===================== ELEMENTS =====================
 const $ = (id) => document.getElementById(id);
@@ -48,6 +50,7 @@ const startBtn = $('start-btn');
 const welcomeScreen = $('welcome-screen');
 const templateScreen = $('template-screen');
 const templateList = $('template-list');
+const categoryBar = $('category-bar');
 const templateConfirm = $('template-confirm');
 const templateLabel = $('template-label');
 const boothScreen = $('booth-screen');
@@ -132,6 +135,54 @@ startBtn.addEventListener('click', () => {
 });
 
 // ===================== TEMPLATE PICKER =====================
+// ---------- Categories ----------
+function templateCat(tpl) { return tpl.categoryId || 'cat-custom'; }
+
+function catLabel(c) {
+  if (c.builtin && !c.customName && typeof I18N !== 'undefined') {
+    const k = 'cat.' + c.key, t = I18N.t(k);
+    if (t !== k) return t;
+  }
+  return c.name;
+}
+
+function buildCategoryBar() {
+  if (!categoryBar) return;
+  categoryBar.innerHTML = '';
+  // guests only see categories that have templates in them
+  const counts = {};
+  allTemplates.forEach((t) => { const id = templateCat(t); counts[id] = (counts[id] || 0) + 1; });
+  const cats = allCategories.filter((c) => counts[c.id]);
+  // templates whose category was removed/unknown still show under "All"
+  if (cats.length < 1 || allTemplates.length < 1) return;
+  if (activeCategory !== 'all' && !cats.some((c) => c.id === activeCategory)) activeCategory = 'all';
+
+  const make = (id, icon, label, n) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'cat-chip' + (activeCategory === id ? ' active' : '');
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', activeCategory === id ? 'true' : 'false');
+    b.innerHTML = '<span class="cat-ico"></span><span class="cat-name"></span><span class="cat-n"></span>';
+    b.querySelector('.cat-ico').textContent = icon;
+    b.querySelector('.cat-name').textContent = label;
+    b.querySelector('.cat-n').textContent = n;
+    b.addEventListener('click', () => {
+      activeCategory = id;
+      // a picked template that isn't in this category is no longer on screen: clear it
+      if (selectedTemplate && id !== 'all' && templateCat(selectedTemplate) !== id) {
+        selectedTemplate = null;
+        templateConfirm.disabled = true;
+      }
+      buildCategoryBar();
+      buildTemplateList();
+    });
+    categoryBar.appendChild(b);
+  };
+  make('all', '✨', typeof I18N !== 'undefined' ? I18N.t('cat.all') : 'All', allTemplates.length);
+  cats.forEach((c) => make(c.id, c.emoji, catLabel(c), counts[c.id]));
+}
+
 function buildTemplateList() {
   templateList.innerHTML = '';
 
@@ -140,7 +191,17 @@ function buildTemplateList() {
     return;
   }
 
-  allTemplates.forEach((tpl) => {
+  const shown = activeCategory === 'all' ? allTemplates
+    : allTemplates.filter((t) => templateCat(t) === activeCategory);
+  if (!shown.length) {
+    const p = document.createElement('p');
+    p.className = 'cat-empty';
+    p.textContent = typeof I18N !== 'undefined' ? I18N.t('cat.empty') : 'No templates in this category yet.';
+    templateList.appendChild(p);
+    return;
+  }
+
+  shown.forEach((tpl) => {
     const card = document.createElement('button');
     card.className = 'template-card';
     card.type = 'button';
@@ -176,6 +237,10 @@ function buildTemplateList() {
     templateList.appendChild(card);
   });
 }
+if (typeof BUILTIN_CATEGORIES !== 'undefined') {
+  allCategories = BUILTIN_CATEGORIES.map((d, i) => ({ id: d.id, key: d.key, builtin: true, name: d.name, emoji: d.emoji, order: i }));
+}
+buildCategoryBar();
 buildTemplateList();
 
 if (!STORE_OK) {
@@ -193,12 +258,14 @@ async function refreshTemplates() {
     console.warn('Custom templates not available:', err);
   }
   allTemplates = TEMPLATES.concat(custom);
+  try { allCategories = await CategoryStore.list(); } catch (err) { console.warn('Categories not available:', err); }
 
   if (selectedTemplate && !allTemplates.some((t) => t.id === selectedTemplate.id) &&
       !templateScreen.classList.contains('hidden')) {
     selectedTemplate = null;
     templateConfirm.disabled = true;
   }
+  buildCategoryBar();
   buildTemplateList();
 }
 if (STORE_OK) {
@@ -223,6 +290,9 @@ templateConfirm.addEventListener('click', () => {
 });
 
 changeTemplateBtn.addEventListener('click', () => {
+  if (selectedTemplate) activeCategory = templateCat(selectedTemplate);   // reopen on the current template's category
+  buildCategoryBar();
+  buildTemplateList();
   bgAnim.classList.remove('off');
   boothScreen.classList.add('hidden');
   templateScreen.classList.remove('hidden');
@@ -1298,6 +1368,7 @@ $('qr-close').addEventListener('click', () => $('qr-dlg').close());
 $('qr-dlg').addEventListener('click', (e) => { if (e.target === $('qr-dlg')) $('qr-dlg').close(); });
 // keep the capture-button label in the chosen language
 window.addEventListener('langchange', () => {
+  buildCategoryBar();
   if (selectedTemplate) stripBtn.textContent = I18N.t('btn.capture', { n: currentSlots().length });
   if ($('qr-dlg').open && qrCache.link) ShareUI.render($('qr-social'), qrCache.link, I18N.t('get.title'));
 });

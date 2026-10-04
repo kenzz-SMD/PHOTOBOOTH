@@ -407,3 +407,29 @@ main > .card:nth-child(3) { animation-delay: .24s !important; }
   body:not(.locked) .top, body:not(.locked) main > .card, .tcard, #cloud-pill.ok { animation: none !important; }
   .floaties { display: none; }
 }
+
+/* ===== Categories ===== */
+.cat-select { padding: 7px 10px; border: 1px solid #d9c7b5; border-radius: 8px; font: inherit; font-size: 14px; background: #fff; margin-left: 8px; max-width: 100%; }
+#grid-filter { font-weight: 400; vertical-align: middle; }
+#cat-list { display: grid; gap: 8px; margin-bottom: 14px; }
+.cat-row {
+  display: grid; grid-template-columns: 56px 1fr auto auto; gap: 8px; align-items: center;
+  padding: 8px 10px; border: 1px solid #f0dccb; border-radius: 12px; background: #fffdfb;
+}
+.cat-row input { padding: 8px 10px; border: 1px solid #d9c7b5; border-radius: 8px; font: inherit; min-width: 0; width: 100%; }
+.cat-row input.cat-emoji { text-align: center; font-size: 20px; padding: 5px; }
+.cat-row .cat-meta { font-size: 12px; color: #7a6a5c; white-space: nowrap; }
+.cat-row .cat-btns { display: flex; gap: 4px; }
+.cat-row .icon-btn { font-size: 15px; border: 1px solid #ecd8c6; border-radius: 8px; background: #fff; padding: 5px 9px; }
+.cat-row .icon-btn:hover:not(:disabled) { background: #fff0e6; color: #b34a00; }
+.cat-row .icon-btn.del:hover:not(:disabled) { background: #fde5e5; color: #d93a3a; }
+.cat-row .icon-btn:disabled { opacity: .35; cursor: default; }
+.cat-add { display: grid; grid-template-columns: 56px 1fr auto; gap: 8px; margin-bottom: 10px; }
+.cat-add input { padding: 9px 12px; border: 1px solid #d9c7b5; border-radius: 8px; font: inherit; min-width: 0; width: 100%; }
+.cat-add input:first-child { text-align: center; font-size: 20px; padding: 5px; }
+.tcat { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #6b5b4d; }
+.tcat .cat-select { margin: 0; flex: 1; min-width: 0; padding: 5px 8px; font-size: 13px; }
+@media (max-width: 560px) {
+  .cat-row { grid-template-columns: 48px 1fr; }
+  .cat-row .cat-meta, .cat-row .cat-btns { grid-column: 1 / -1; }
+}

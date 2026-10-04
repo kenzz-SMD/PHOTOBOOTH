@@ -8,7 +8,7 @@
 create table if not exists public.ts_items (
   lib        text    not null,
   id         text    not null,
-  kind       text    not null check (kind in ('template','strip')),
+  kind       text    not null check (kind in ('template','strip','category')),
   data       jsonb   not null default '{}'::jsonb,
   deleted    boolean not null default false,
   updated_at bigint  not null,
@@ -65,4 +65,18 @@ create policy "ts files update" on storage.objects for update to anon, authentic
 do $$ begin
   alter publication supabase_realtime add table public.ts_items;
 exception when duplicate_object then null;
+end $$;
+
+-- 6) Template categories: allow the new 'category' record kind.
+--    (Writes are already admin-only: the policies above only let guests write 'strip' rows.)
+do $$
+declare c text;
+begin
+  for c in select conname from pg_constraint
+           where conrelid = 'public.ts_items'::regclass and contype = 'c'
+             and pg_get_constraintdef(oid) ilike '%kind%' loop
+    execute format('alter table public.ts_items drop constraint %I', c);
+  end loop;
+  alter table public.ts_items
+    add constraint ts_items_kind_check check (kind in ('template','strip','category'));
 end $$;

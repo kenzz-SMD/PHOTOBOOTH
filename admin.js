@@ -22,6 +22,9 @@ const optTransparent = $('opt-transparent');
 const uploadLog = $('upload-log');
 const grid = $('grid');
 const countEl = $('count');
+const uploadCatEl = $('upload-cat');
+const gridFilterEl = $('grid-filter');
+const catListEl = $('cat-list');
 
 // ---------- small helpers ----------
 function toast(msg) {
@@ -242,6 +245,7 @@ async function processFile(file) {
       origBytes: file.size, bytes: blob.size,
       slots: needsAdjust ? defaultSlots() : result.slots,
       mode: result.mode, madeTransparent: result.madeTransparent,
+      categoryId: uploadCatEl.value || DEFAULT_CATEGORY_ID,
       createdAt: Date.now(), blob
     };
     await TemplateStore.save(rec);
@@ -314,6 +318,30 @@ function makeCard(t) {
   }
   card.appendChild(name);
 
+  // Category: admins can move uploaded templates between categories
+  const catBox = document.createElement('label');
+  catBox.className = 'tcat';
+  catBox.append('Category');
+  if (t.builtin) {
+    const c = cats.find((x) => x.id === (t.categoryId || DEFAULT_CATEGORY_ID));
+    const span = document.createElement('span');
+    span.textContent = c ? c.emoji + ' ' + c.name : '—';
+    catBox.appendChild(span);
+  } else {
+    const sel = document.createElement('select');
+    sel.className = 'cat-select';
+    fillCatOptions(sel, t.categoryId || DEFAULT_CATEGORY_ID);
+    sel.onchange = async () => {
+      try {
+        await TemplateStore.setCategory(t.id, sel.value);
+        await renderGrid();
+        toast('Moved "' + t.name + '" to ' + catName(sel.value));
+      } catch (err) { toast('Could not move: ' + err.message); }
+    };
+    catBox.appendChild(sel);
+  }
+  card.appendChild(catBox);
+
   const meta = document.createElement('div');
   meta.className = 'tmeta';
   const dims = t.width + '×' + t.height +
@@ -367,11 +395,13 @@ function makeCard(t) {
 async function renderGrid() {
   thumbUrls.forEach((u) => URL.revokeObjectURL(u));
   thumbUrls = [];
-  grid.innerHTML = '';
 
   const custom = await TemplateStore.list().catch(() => []);
+  await loadCats();
+  fillCatSelects();
+  grid.innerHTML = '';
   const items = BUILTIN_TEMPLATES.map((b) => ({
-    id: b.id, name: b.name, src: b.src, slots: b.slots,
+    id: b.id, name: b.name, src: b.src, slots: b.slots, categoryId: b.categoryId,
     width: STRIP_W, height: STRIP_H, builtin: true
   }));
   custom.forEach((r) => {
@@ -381,13 +411,158 @@ async function renderGrid() {
       id: r.id, name: r.name, src, slots: r.slots,
       width: r.width, height: r.height,
       origWidth: r.origWidth, origHeight: r.origHeight,
-      bytes: r.bytes, origBytes: r.origBytes, rec: r
+      bytes: r.bytes, origBytes: r.origBytes, rec: r, categoryId: r.categoryId
     });
   });
 
-  items.forEach((t) => grid.appendChild(makeCard(t)));
-  countEl.textContent = items.length;
+  const f = gridFilterEl.value || 'all';
+  const shown = f === 'all' ? items : items.filter((t) => (t.categoryId || DEFAULT_CATEGORY_ID) === f);
+  shown.forEach((t) => grid.appendChild(makeCard(t)));
+  if (!shown.length) {
+    const p = document.createElement('p');
+    p.className = 'muted small';
+    p.textContent = 'No templates in this category yet. Upload one above and choose this category.';
+    grid.appendChild(p);
+  }
+  countEl.textContent = f === 'all' ? items.length : shown.length + ' / ' + items.length;
+  updateCategoryCounts(items);
 }
+
+// ===================== CATEGORIES =====================
+let cats = [];     // visible categories (defaults + yours)
+let catCounts = {};
+
+async function loadCats() {
+  try { cats = await CategoryStore.list(); } catch (e) { cats = []; }
+}
+
+function catName(id) {
+  const c = cats.find((x) => x.id === id);
+  return c ? c.name : 'Custom / User-Defined';
+}
+
+function fillCatOptions(sel, value) {
+  sel.innerHTML = '';
+  cats.forEach((c) => {
+    const o = document.createElement('option');
+    o.value = c.id;
+    o.textContent = c.emoji + ' ' + c.name;
+    sel.appendChild(o);
+  });
+  sel.value = cats.some((c) => c.id === value) ? value : DEFAULT_CATEGORY_ID;
+}
+
+// keep the upload + filter dropdowns in step with the category list
+function fillCatSelects() {
+  const up = uploadCatEl.value || DEFAULT_CATEGORY_ID;
+  fillCatOptions(uploadCatEl, up);
+  const f = gridFilterEl.value || 'all';
+  gridFilterEl.innerHTML = '';
+  const all = document.createElement('option');
+  all.value = 'all'; all.textContent = 'All categories';
+  gridFilterEl.appendChild(all);
+  cats.forEach((c) => {
+    const o = document.createElement('option');
+    o.value = c.id; o.textContent = c.emoji + ' ' + c.name;
+    gridFilterEl.appendChild(o);
+  });
+  gridFilterEl.value = (f === 'all' || cats.some((c) => c.id === f)) ? f : 'all';
+}
+gridFilterEl.addEventListener('change', () => renderGrid());
+
+function updateCategoryCounts(items) {
+  catCounts = {};
+  items.forEach((t) => { const id = t.categoryId || DEFAULT_CATEGORY_ID; catCounts[id] = (catCounts[id] || 0) + 1; });
+  renderCategories();
+}
+
+let forceCatRender = false;
+function renderCategories() {
+  // don't rebuild (and lose the cursor) while the admin is typing in a row, e.g. on a sync update
+  const ae = document.activeElement;
+  if (!forceCatRender && ae && ae.tagName === 'INPUT' && catListEl.contains(ae)) return;
+  forceCatRender = false;
+  catListEl.innerHTML = '';
+  $('cat-count').textContent = cats.length;
+
+  cats.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'cat-row';
+
+    const emoji = document.createElement('input');
+    emoji.className = 'cat-emoji'; emoji.maxLength = 4; emoji.value = c.emoji; emoji.setAttribute('aria-label', 'Emoji');
+    const name = document.createElement('input');
+    name.maxLength = 30; name.value = c.name; name.setAttribute('aria-label', 'Category name');
+
+    const save = async () => {
+      const n = name.value.trim(), em = emoji.value.trim();
+      if (!n) { name.value = c.name; toast('A category needs a name.'); return; }
+      if (n === c.name && em === c.emoji) return;
+      try { await CategoryStore.update(c.id, { name: n, emoji: em || c.emoji }); toast('Saved "' + n + '".'); }
+      catch (err) { toast('Could not save: ' + err.message); }
+      forceCatRender = true;
+      await renderGrid();
+    };
+    [emoji, name].forEach((el) => {
+      el.addEventListener('change', save);
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter') el.blur(); });
+    });
+
+    const n = catCounts[c.id] || 0;
+    const meta = document.createElement('span');
+    meta.className = 'cat-meta';
+    meta.textContent = n + (n === 1 ? ' template' : ' templates') + (c.builtin ? ' · default' : '');
+
+    const btns = document.createElement('span');
+    btns.className = 'cat-btns';
+    const mk = (label, title, fn, cls) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'icon-btn ' + (cls || ''); b.textContent = label; b.title = title; b.setAttribute('aria-label', title);
+      b.onclick = fn;
+      return b;
+    };
+    const up = mk('▲', 'Move up', async () => { await CategoryStore.move(c.id, -1); await renderGrid(); });
+    const down = mk('▼', 'Move down', async () => { await CategoryStore.move(c.id, 1); await renderGrid(); });
+    up.disabled = i === 0; down.disabled = i === cats.length - 1;
+    const del = mk('🗑', c.id === DEFAULT_CATEGORY_ID ? 'This category can’t be removed' : 'Delete category', async () => {
+      const ok = await confirmDialog('Delete "' + c.name + '"?',
+        n ? n + ' template(s) in it will move to "' + catName(DEFAULT_CATEGORY_ID) + '".' : 'This category is empty.');
+      if (!ok) return;
+      try {
+        const recs = await TemplateStore.list();
+        for (const r of recs) if (r.categoryId === c.id) await TemplateStore.setCategory(r.id, DEFAULT_CATEGORY_ID);
+        await CategoryStore.remove(c.id);
+        toast('Deleted "' + c.name + '".');
+      } catch (err) { toast('Could not delete: ' + err.message); }
+      await renderGrid();
+    }, 'del');
+    del.disabled = c.id === DEFAULT_CATEGORY_ID;
+    btns.append(up, down, del);
+
+    row.append(emoji, name, meta, btns);
+    catListEl.appendChild(row);
+  });
+}
+
+$('cat-add-btn').onclick = async () => {
+  const nameEl = $('cat-new-name'), emojiEl = $('cat-new-emoji');
+  const n = nameEl.value.trim();
+  if (!n) { toast('Type a name for the new category.'); nameEl.focus(); return; }
+  if (cats.some((c) => c.name.toLowerCase() === n.toLowerCase())) { toast('That category already exists.'); return; }
+  try {
+    const rec = await CategoryStore.add(n, emojiEl.value.trim());
+    nameEl.value = ''; emojiEl.value = '';
+    await renderGrid();
+    uploadCatEl.value = rec.id;
+    toast('Added "' + n + '". New uploads can now go into it.');
+  } catch (err) { toast('Could not add: ' + err.message); }
+};
+$('cat-new-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('cat-add-btn').click(); });
+$('cat-restore').onclick = async () => {
+  await CategoryStore.restoreDefaults();
+  await renderGrid();
+  toast('Default categories restored.');
+};
 
 // ===================== EDIT (rename + slot coordinates) =====================
 const edDlg = $('edit-dlg');
