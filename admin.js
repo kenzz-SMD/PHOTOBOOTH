@@ -259,6 +259,7 @@ async function processFile(file) {
     if (Math.abs(ratio - 1 / 3) > 0.02) msg += ' ⚠ not a 1:3 strip, image was stretched';
     line.className = 'log ' + (needsAdjust ? 'warn' : 'ok');
     line.textContent = msg;
+    if (!needsAdjust) burstConfetti(dropzone);
 
     await renderGrid();
     if (needsAdjust) openEditor(rec);
@@ -832,3 +833,38 @@ renderGrid();
   $('cloud-now').onclick = () => CloudSync.sync();
   $('cloud-off').onclick = () => { CloudSync.disable(); toast('Cloud sync turned off.'); };
 })();
+
+// ===================== LIVELY TOUCHES =====================
+// Button ripple: a soft circle grows from where you click/tap
+document.addEventListener('pointerdown', (e) => {
+  const b = e.target.closest && e.target.closest('.btn');
+  if (!b || b.disabled) return;
+  const r = b.getBoundingClientRect();
+  const d = Math.max(r.width, r.height) * 1.6;
+  const rip = document.createElement('span');
+  rip.className = 'ripple';
+  rip.style.width = rip.style.height = d + 'px';
+  rip.style.left = (e.clientX - r.left - d / 2) + 'px';
+  rip.style.top = (e.clientY - r.top - d / 2) + 'px';
+  b.appendChild(rip);
+  setTimeout(() => rip.remove(), 650);
+});
+
+// Confetti burst when an upload succeeds
+function burstConfetti(box) {
+  if (!box || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+  const bits = ['✨', '💖', '⭐', '🎉', '🎀', '💫', '📸'];
+  for (let i = 0; i < 16; i++) {
+    const el = document.createElement('span');
+    el.className = 'burst-piece';
+    el.textContent = bits[i % bits.length];
+    const ang = (Math.PI * 2 * i) / 16 + Math.random() * 0.4;
+    const dist = 90 + Math.random() * 130;
+    el.style.setProperty('--dx', Math.cos(ang) * dist + 'px');
+    el.style.setProperty('--dy', Math.sin(ang) * dist * 0.8 - 30 + 'px');
+    el.style.setProperty('--rot', (Math.random() * 540 - 270) + 'deg');
+    el.style.fontSize = 18 + Math.random() * 16 + 'px';
+    box.appendChild(el);
+    setTimeout(() => el.remove(), 1100);
+  }
+}

@@ -38,14 +38,21 @@
     </div>
   </header>
 
+  <!-- soft floating decoration behind the dashboard -->
+  <div class="dash-floaties" aria-hidden="true">
+    <span>📸</span><span>✨</span><span>🎞️</span><span>💖</span><span>⭐</span><span>🎀</span><span>🫧</span><span>📷</span>
+  </div>
+
   <main>
     <!-- 1. Upload -->
     <section class="card">
-      <h2>Upload templates</h2>
+      <h2><span class="h-ico">📤</span> Upload templates</h2>
       <div id="dropzone" tabindex="0">
+        <span class="dz-deco d1">✨</span><span class="dz-deco d2">💖</span><span class="dz-deco d3">🎞️</span><span class="dz-deco d4">⭐</span>
+        <div class="dz-icon" aria-hidden="true">📸</div>
         <p class="dz-title"><b>Drag &amp; drop</b> PNG or JPG templates here</p>
         <p class="muted">or</p>
-        <button id="pick-btn" class="btn">Choose files</button>
+        <button id="pick-btn" class="btn pulse">📁 Choose files</button>
         <input type="file" id="file-input" accept="image/png,image/jpeg" multiple hidden>
       </div>
       <label class="check">
@@ -65,7 +72,7 @@
 
     <!-- 1b. Categories -->
     <section class="card" id="cat-card">
-      <h2>Categories <span id="cat-count" class="pill"></span></h2>
+      <h2><span class="h-ico">🗂️</span> Categories <span id="cat-count" class="pill"></span></h2>
       <p class="muted small">
         Guests pick a category first, then a template. Rename or reorder categories, add your own,
         or remove the ones you don't need. Categories with no templates are hidden from guests.
@@ -74,14 +81,14 @@
       <div class="cat-add">
         <input id="cat-new-emoji" type="text" maxlength="4" placeholder="🙂" aria-label="Emoji">
         <input id="cat-new-name" type="text" maxlength="30" placeholder="New category name" aria-label="New category name">
-        <button id="cat-add-btn" class="btn" type="button">+ Add category</button>
+        <button id="cat-add-btn" class="btn" type="button">＋ Add category</button>
       </div>
       <button id="cat-restore" class="btn ghost small" type="button">↺ Restore default categories</button>
     </section>
 
     <!-- 2. Template list -->
     <section class="card">
-      <h2>Templates <span id="count" class="pill"></span>
+      <h2><span class="h-ico">🖼️</span> Templates <span id="count" class="pill"></span>
         <select id="grid-filter" class="cat-select" aria-label="Show category"></select></h2>
       <div id="grid"></div>
       <p class="muted small" id="sync-note">
@@ -93,7 +100,7 @@
 
     <!-- 3. Cloud sync -->
     <section class="card" id="cloud-card">
-      <h2>☁️ Cloud sync <span id="cloud-pill" class="pill">off</span></h2>
+      <h2><span class="h-ico">☁️</span> Cloud sync <span id="cloud-pill" class="pill">off</span></h2>
       <p class="muted small">
         Share templates and finished strips between devices. Create a free Supabase project,
         run <code>supabase-setup.sql</code> once (it also switches on real-time), then paste the project URL and the
