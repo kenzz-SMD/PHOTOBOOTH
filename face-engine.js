@@ -13,11 +13,15 @@ const FaceEngine = (() => {
   const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@' + VER + '/wasm';
   const MODEL = 'https://storage.googleapis.com/mediapipe-models/face_detector/' +
                 'blaze_face_short_range/float16/1/blaze_face_short_range.tflite';
+  const SEGMENTER_MODEL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/' +
+                          'selfie_segmenter_landscape/float16/1/selfie_segmenter_landscape.tflite';
 
   let libP = null;
   const pending = {};   // 'IMAGE' | 'VIDEO' -> promise of detector
   const ready = {};     // 'IMAGE' | 'VIDEO' -> detector (for synchronous use)
   let failed = false;
+  let segmenterP = null;
+  let segmenter = null;
 
   function lib() {
     if (!libP) {
@@ -44,6 +48,29 @@ const FaceEngine = (() => {
       pending[mode].catch(() => { delete pending[mode]; failed = true; });
     }
     return pending[mode];
+  }
+
+  async function initSegmenter() {
+    if (!segmenterP) {
+      segmenterP = lib().then(async ({ m, files }) => {
+        const options = (delegate) => m.ImageSegmenter.createFromOptions(files, {
+          baseOptions: { modelAssetPath: SEGMENTER_MODEL, delegate },
+          runningMode: 'VIDEO',
+          outputCategoryMask: false,
+          outputConfidenceMasks: true
+        });
+        try { return await options('GPU'); }
+        catch (e) { return options('CPU'); }
+      }).then((instance) => {
+        segmenter = instance;
+        return true;
+      }).catch((e) => {
+        segmenterP = null;
+        console.warn('Background segmentation unavailable:', e);
+        return false;
+      });
+    }
+    return segmenterP;
   }
 
   // kp order: [rightEye, leftEye, nose, mouth, rightEar, leftEar]
@@ -125,6 +152,32 @@ const FaceEngine = (() => {
       catch (e) { console.warn('AR face detection unavailable:', e); return false; }
     },
 
+    initSegmenter,
+
+    segmentVideo(video, ts) {
+      if (!segmenter || !video.videoWidth) return null;
+      let result;
+      try {
+        result = segmenter.segmentForVideo(video, ts);
+        const masks = result.confidenceMasks || [];
+        const personMask = masks[masks.length > 1 ? 1 : 0];
+        if (!personMask) return null;
+        return {
+          data: personMask.getAsFloat32Array().slice(),
+          width: personMask.width,
+          height: personMask.height
+        };
+      } catch (e) {
+        console.warn('Background segmentation frame failed:', e);
+        return null;
+      } finally {
+        if (result && result.confidenceMasks) {
+          result.confidenceMasks.forEach((mask) => mask.close());
+        }
+        if (result && result.categoryMask) result.categoryMask.close();
+      }
+    },
+
     // Faces in a still image / canvas. Returns null when the engine isn't available.
     async detectImage(src) {
       try {
@@ -161,7 +214,10 @@ const FaceEngine = (() => {
 const AR_FILTERS = [
   { id: 'none',     name: 'None',        icon: '🚫' },
   { id: 'shades',   name: 'Shades',      icon: '🕶️' },
+  { id: 'glasses',  name: 'Glasses',     icon: '🤓' },
   { id: 'hearts',   name: 'Heart eyes',  icon: '😍' },
+  { id: 'mask',     name: 'Face mask',   icon: '😷' },
+  { id: 'mustache', name: 'Mustache',    icon: '🥸' },
   { id: 'tophat',   name: 'Top hat',     icon: '🎩' },
   { id: 'crown',    name: 'Crown',       icon: '👑' },
   { id: 'grad',     name: 'Grad cap',    icon: '🎓' },
@@ -210,6 +266,21 @@ function arGeometry(face) {
   return { eA, eB, ec, angle, right, up, nose, fw: b.w, fh: b.h, eyeDist: Math.hypot(eB.x - eA.x, eB.y - eA.y) };
 }
 
+function arRoundRect(ctx, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
 function drawArFace(ctx, face, id) {
   const g = arGeometry(face);
   // point relative to the eye centre: u along "up", r along "right"
@@ -222,6 +293,56 @@ function drawArFace(ctx, face, id) {
     case 'shades':
       arEmoji(ctx, '🕶️', g.ec.x, g.ec.y, g.eyeDist * 2.7, g.angle);
       break;
+    case 'glasses': {
+      ctx.save();
+      ctx.translate(g.ec.x, g.ec.y);
+      ctx.rotate(g.angle);
+      ctx.lineWidth = Math.max(2, g.eyeDist * 0.1);
+      ctx.strokeStyle = '#342b46';
+      ctx.fillStyle = 'rgba(203, 232, 255, 0.42)';
+      [-1, 1].forEach((side) => {
+        arRoundRect(ctx, side * g.eyeDist * 0.55 - g.eyeDist * 0.48, -g.eyeDist * 0.36, g.eyeDist * 0.96, g.eyeDist * 0.72, g.eyeDist * 0.18);
+        ctx.fill();
+        ctx.stroke();
+      });
+      ctx.beginPath();
+      ctx.moveTo(-g.eyeDist * 0.1, 0);
+      ctx.lineTo(g.eyeDist * 0.1, 0);
+      ctx.moveTo(-g.eyeDist * 1.05, -g.eyeDist * 0.12);
+      ctx.lineTo(-g.eyeDist * 1.32, -g.eyeDist * 0.2);
+      ctx.moveTo(g.eyeDist * 1.05, -g.eyeDist * 0.12);
+      ctx.lineTo(g.eyeDist * 1.32, -g.eyeDist * 0.2);
+      ctx.stroke();
+      ctx.restore();
+      break;
+    }
+    case 'mask': {
+      const p = at(-g.fh * 0.3, 0);
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(g.angle);
+      ctx.fillStyle = '#a9e6d2';
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = Math.max(1.5, g.fw * 0.018);
+      arRoundRect(ctx, -g.fw * 0.4, -g.fh * 0.13, g.fw * 0.8, g.fh * 0.38, g.fw * 0.12);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(54, 126, 117, 0.55)';
+      ctx.lineWidth = Math.max(1, g.fw * 0.012);
+      [-0.04, 0.05, 0.14].forEach((y) => {
+        ctx.beginPath();
+        ctx.moveTo(-g.fw * 0.3, g.fh * y);
+        ctx.lineTo(g.fw * 0.3, g.fh * y);
+        ctx.stroke();
+      });
+      ctx.restore();
+      break;
+    }
+    case 'mustache': {
+      const p = at(-g.fh * 0.34, 0);
+      arEmoji(ctx, '🥸', p.x, p.y, g.eyeDist * 2.2, g.angle);
+      break;
+    }
     case 'hearts':
       arEmoji(ctx, '❤️', g.eA.x, g.eA.y, g.eyeDist * 0.95, g.angle);
       arEmoji(ctx, '❤️', g.eB.x, g.eB.y, g.eyeDist * 0.95, g.angle);

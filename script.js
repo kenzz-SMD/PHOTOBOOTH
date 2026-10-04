@@ -64,6 +64,14 @@ const cameraShotCount = $('camera-shot-count');
 const cameraShotTotal = $('camera-shot-total');
 const cameraShots = $('camera-shots');
 const cameraShotProgress = $('camera-shot-progress');
+const cameraShotMeter = $('camera-shot-meter');
+const cameraShotMeterFill = $('camera-shot-meter-fill');
+const backdropSelect = $('backdrop-select');
+const backdropStatus = $('backdrop-status');
+const gifStripStatus = $('gif-strip-status');
+const finalGif = $('final-gif');
+const gifDownloadBtn = $('gif-download-btn');
+const gifShareBtn = $('gif-share-btn');
 // pop animation every time the countdown number changes
 new MutationObserver(() => {
   countdownEl.classList.remove('tick');
@@ -101,6 +109,22 @@ let cameraStarted = false;
 let mirrorEnabled = true;
 let flashEnabled = true;
 let currentShotCount = 0;
+let selectedBackdrop = 'none';
+let segmentationMask = null;
+let lastSegmentationTs = 0;
+let motionFramesByShot = [];
+let gifStripBlob = null;
+let gifStripUrl = null;
+let gifEncoderPromise = null;
+let foregroundCanvas = null;
+let foregroundMaskCanvas = null;
+
+const BACKDROPS = {
+  sunset: { top: '#ffbd91', bottom: '#bd84cf', glow: '#fff0b3' },
+  blossom: { top: '#ffc8df', bottom: '#a9d9ce', glow: '#fff6ef' },
+  ocean: { top: '#9fdded', bottom: '#8979c8', glow: '#e5fbff' },
+  studio: { top: '#ffd0a8', bottom: '#ffa9c6', glow: '#fff3d1' }
+};
 
 function toast(msg) {
   const t = $('app-toast');
@@ -157,11 +181,127 @@ function syncCameraTools() {
   flashBtn.textContent = flashEnabled ? '⚡ Flash on' : '⚡ Flash off';
 }
 
+function drawBackdrop(ctx, width, height) {
+  const colors = BACKDROPS[selectedBackdrop];
+  if (!colors) return;
+  const gradient = ctx.createLinearGradient(0, 0, width * 0.12, height);
+  gradient.addColorStop(0, colors.top);
+  gradient.addColorStop(1, colors.bottom);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+
+  const glow = ctx.createRadialGradient(width * 0.76, height * 0.2, 0, width * 0.76, height * 0.2, width * 0.65);
+  glow.addColorStop(0, colors.glow);
+  glow.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.beginPath();
+  ctx.ellipse(width * 0.18, height * 0.84, width * 0.52, height * 0.2, -0.12, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function updateSegmentationMask(mask) {
+  if (!mask || !mask.data || !mask.width || !mask.height) return;
+  const maskCanvas = foregroundMaskCanvas || (foregroundMaskCanvas = document.createElement('canvas'));
+  maskCanvas.width = mask.width;
+  maskCanvas.height = mask.height;
+  const maskCtx = maskCanvas.getContext('2d');
+  const image = maskCtx.createImageData(mask.width, mask.height);
+  const input = mask.data;
+  const output = image.data;
+  let confidentPixels = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    const confidence = input[i] <= 1 ? input[i] : input[i] / 255;
+    if (confidence >= 0.45) confidentPixels += 1;
+    const alpha = clamp((confidence - 0.28) / 0.42, 0, 1);
+    const offset = i * 4;
+    output[offset] = 255;
+    output[offset + 1] = 255;
+    output[offset + 2] = 255;
+    output[offset + 3] = Math.round(alpha * 255);
+  }
+  maskCtx.putImageData(image, 0, 0);
+  segmentationMask = confidentPixels >= input.length * 0.002 ? maskCanvas : null;
+}
+
+function drawCameraScene(ctx, width, height, mirrorOutput) {
+  const sourceWidth = video.videoWidth;
+  const sourceHeight = video.videoHeight;
+  if (!sourceWidth || !sourceHeight) return false;
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.save();
+  ctx.scale(width / sourceWidth, height / sourceHeight);
+  if (mirrorOutput && mirrorEnabled) {
+    ctx.translate(sourceWidth, 0);
+    ctx.scale(-1, 1);
+  }
+
+  if (selectedBackdrop !== 'none' && segmentationMask) {
+    drawBackdrop(ctx, sourceWidth, sourceHeight);
+    const foreground = foregroundCanvas || (foregroundCanvas = document.createElement('canvas'));
+    if (foreground.width !== sourceWidth || foreground.height !== sourceHeight) {
+      foreground.width = sourceWidth;
+      foreground.height = sourceHeight;
+    }
+    const foregroundCtx = foreground.getContext('2d');
+    foregroundCtx.globalCompositeOperation = 'source-over';
+    foregroundCtx.drawImage(video, 0, 0, sourceWidth, sourceHeight);
+    foregroundCtx.globalCompositeOperation = 'destination-in';
+    foregroundCtx.drawImage(segmentationMask, 0, 0, sourceWidth, sourceHeight);
+    foregroundCtx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(foreground, 0, 0);
+  } else {
+    ctx.drawImage(video, 0, 0, sourceWidth, sourceHeight);
+  }
+
+  if (arFilter !== 'none' && arReady) drawArFaces(ctx, arFaces, arFilter);
+  ctx.restore();
+  return true;
+}
+
+async function selectBackdrop(backdrop) {
+  selectedBackdrop = backdrop;
+  segmentationMask = null;
+  if (backdrop === 'none') {
+    backdropStatus.textContent = 'Choose a backdrop to replace the background behind you.';
+    return;
+  }
+
+  backdropStatus.textContent = 'Loading the background-removal model…';
+  const ready = typeof FaceEngine !== 'undefined' && await FaceEngine.initSegmenter();
+  if (!ready) {
+    selectedBackdrop = 'none';
+    backdropSelect.value = 'none';
+    backdropStatus.textContent = 'Could not load background removal. Check your connection and try again.';
+    toast('Background replacement could not start.');
+    return;
+  }
+  lastSegmentationTs = 0;
+  backdropStatus.textContent = 'Ready — stay in view for the backdrop to replace behind you.';
+}
+
+backdropSelect.addEventListener('change', () => {
+  selectBackdrop(backdropSelect.value).catch((err) => {
+    console.error('Could not activate background replacement:', err);
+    selectedBackdrop = 'none';
+    backdropSelect.value = 'none';
+    backdropStatus.textContent = 'Background replacement failed. Choose a backdrop to retry.';
+  });
+});
+
 function resetShotRail() {
   const total = currentSlots().length;
   currentShotCount = 0;
   if (cameraShotCount) cameraShotCount.textContent = String(currentShotCount);
   if (cameraShotTotal) cameraShotTotal.textContent = String(total);
+  if (cameraShotMeter) {
+    cameraShotMeter.setAttribute('aria-valuemax', String(total));
+    cameraShotMeter.setAttribute('aria-valuenow', '0');
+  }
+  if (cameraShotMeterFill) cameraShotMeterFill.style.width = '0%';
   if (cameraShotProgress) cameraShotProgress.textContent = 'Your photos will appear here as you go.';
   if (!cameraShots) return;
   cameraShots.innerHTML = '';
@@ -214,12 +354,26 @@ function updateShotRail() {
     }
   });
   if (cameraShotCount) cameraShotCount.textContent = String(currentShotCount);
+  const total = currentSlots().length;
+  if (cameraShotMeter) cameraShotMeter.setAttribute('aria-valuenow', String(currentShotCount));
+  if (cameraShotMeterFill) cameraShotMeterFill.style.width =
+    (total ? Math.round(currentShotCount / total * 100) : 0) + '%';
   if (cameraShotProgress) {
     cameraShotProgress.textContent = currentShotCount > 0
-      ? currentShotCount === currentSlots().length
+      ? currentShotCount === total
         ? 'All moments captured — time to edit.'
         : 'Your photos will appear here as you go.'
       : 'Your photos will appear here as you go.';
+  }
+  if (window.matchMedia('(max-width: 480px)').matches && currentShotCount < total) {
+    const nextShot = shots[currentShotCount];
+    if (nextShot) {
+      cameraShots.scrollTo({
+        left: cameraShots.scrollLeft +
+          nextShot.getBoundingClientRect().left - cameraShots.getBoundingClientRect().left,
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+      });
+    }
   }
 }
 
@@ -361,42 +515,193 @@ stripBtn.addEventListener('click', () => {
   stripBtn.disabled = true;
   changeTemplateBtn.disabled = true;
   galleryBtn.disabled = true;
+  motionFramesByShot = [];
+  resetGifStrip();
   resetShotRail();
   captureStrip(1, []);
 });
 
 function captureStrip(shotNumber, photos) {
   runCountdown(() => {
-    playShutter();
-    triggerFlash();
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    if (arFilter !== 'none') {
-      drawArFaces(ctx, arFaces, arFilter);   // same smoothed faces as the live preview
-    }
-    const shotData = canvas.toDataURL('image/png');
-    photos.push(shotData);
+    capturePhotoSlot().then((result) => {
+      photos.push(result.photo);
+      motionFramesByShot.push(result.frames);
+      const slotIndex = shotNumber - 1;
+      const listItem = cameraShots?.children[slotIndex];
+      if (listItem) {
+        listItem._shotData = { dataUrl: result.photo };
+        currentShotCount = shotNumber;
+        listItem.classList.add('latest');
+        updateShotRail();
+      }
 
-    const slotIndex = shotNumber - 1;
-    const listItem = cameraShots?.children[slotIndex];
-    if (listItem) {
-      listItem._shotData = { dataUrl: shotData };
-      currentShotCount = shotNumber;
-      listItem.classList.add('latest');
-      updateShotRail();
-    }
-
-    if (shotNumber < currentSlots().length) {
-      countdownEl.textContent = 'Next shot...';
-      setTimeout(() => captureStrip(shotNumber + 1, photos), 1000);
-    } else {
+      if (shotNumber < currentSlots().length) {
+        countdownEl.textContent = 'Next shot...';
+        setTimeout(() => captureStrip(shotNumber + 1, photos), 1000);
+      } else {
+        countdownEl.textContent = '';
+        startEdit(photos);
+      }
+    }).catch((err) => {
+      console.error('Could not capture photo slot:', err);
       countdownEl.textContent = '';
-      startEdit(photos);
-    }
+      [stripBtn, changeTemplateBtn, galleryBtn].forEach((button) => { button.disabled = false; });
+      toast('Could not capture the strip: ' + err.message);
+    });
   });
 }
+
+const GIF_CAPTURE_WIDTH = 320;
+const GIF_CAPTURE_FRAME_COUNT = 6;
+const GIF_CAPTURE_INTERVAL = 100;
+
+async function capturePhotoSlot() {
+  if (!video.videoWidth || !video.videoHeight) throw new Error('The camera is not ready.');
+
+  const frameWidth = Math.min(GIF_CAPTURE_WIDTH, video.videoWidth);
+  const frameHeight = Math.max(1, Math.round(frameWidth * video.videoHeight / video.videoWidth));
+  const frameCanvas = document.createElement('canvas');
+  frameCanvas.width = frameWidth;
+  frameCanvas.height = frameHeight;
+  const frameCtx = frameCanvas.getContext('2d', { willReadFrequently: true });
+  const frames = [];
+
+  for (let i = 0; i < GIF_CAPTURE_FRAME_COUNT; i += 1) {
+    if (i > 0) await wait(GIF_CAPTURE_INTERVAL);
+    drawCameraScene(frameCtx, frameWidth, frameHeight, true);
+    frames.push(frameCtx.getImageData(0, 0, frameWidth, frameHeight));
+  }
+
+  playShutter();
+  triggerFlash();
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  drawCameraScene(ctx, canvas.width, canvas.height, true);
+  return { photo: canvas.toDataURL('image/png'), frames };
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function loadGifEncoder() {
+  if (!gifEncoderPromise) {
+    gifEncoderPromise = import('https://cdn.jsdelivr.net/npm/gifenc@1.0.3/+esm')
+      .catch((err) => {
+        gifEncoderPromise = null;
+        throw err;
+      });
+  }
+  return gifEncoderPromise;
+}
+
+function resetGifStrip() {
+  gifStripBlob = null;
+  if (gifStripUrl) URL.revokeObjectURL(gifStripUrl);
+  gifStripUrl = null;
+  finalGif.removeAttribute('src');
+  finalGif.classList.add('hidden');
+  gifDownloadBtn.disabled = true;
+  gifShareBtn.disabled = true;
+  gifStripStatus.textContent = 'Your animated strip will appear here.';
+}
+
+async function composeGifStrip() {
+  if (motionFramesByShot.length !== currentSlots().length ||
+      motionFramesByShot.some((frames) => frames.length !== GIF_CAPTURE_FRAME_COUNT)) {
+    throw new Error('Some motion frames are missing. Please retake the strip.');
+  }
+
+  const { GIFEncoder, quantize, applyPalette } = await loadGifEncoder();
+  const slots = currentSlots();
+  const hiRes = document.createElement('canvas');
+  hiRes.width = STRIP_W;
+  hiRes.height = STRIP_H;
+  const hiCtx = hiRes.getContext('2d');
+  const outputWidth = Math.round(STRIP_W * 0.4);
+  const outputHeight = Math.round(outputWidth * STRIP_H / STRIP_W);
+  const outputCanvas = document.createElement('canvas');
+  outputCanvas.width = outputWidth;
+  outputCanvas.height = outputHeight;
+  const outputCtx = outputCanvas.getContext('2d', { willReadFrequently: true });
+  const frameIndices = [0, 1, 2, 3, 4, 5, 4, 3, 2, 1];
+  const renderedFrames = [];
+  const tpl = selectedTemplate;
+  let templateImage = null;
+  if (tpl.src) {
+    try {
+      templateImage = await loadImage(tpl.src);
+    } catch (err) {
+      console.error('Could not load template for animated strip:', err);
+      throw new Error('Could not load the selected template for the GIF.');
+    }
+  }
+
+  for (const frameIndex of frameIndices) {
+    hiCtx.fillStyle = tpl.background || '#ffffff';
+    hiCtx.fillRect(0, 0, STRIP_W, STRIP_H);
+
+    slots.forEach((slot, slotIndex) => {
+      const frame = motionFramesByShot[slotIndex][frameIndex];
+      const frameCanvas = document.createElement('canvas');
+      frameCanvas.width = frame.width;
+      frameCanvas.height = frame.height;
+      frameCanvas.getContext('2d').putImageData(frame, 0, 0);
+
+      const animatedItem = {
+        img: frameCanvas,
+        box: editState[slotIndex].box
+      };
+      drawPhoto(hiCtx, animatedItem, slot);
+    });
+
+    if (templateImage) hiCtx.drawImage(templateImage, 0, 0, STRIP_W, STRIP_H);
+    stickers.forEach((sticker) => {
+      hiCtx.save();
+      hiCtx.translate(sticker.x, sticker.y);
+      hiCtx.rotate(sticker.rot);
+      hiCtx.drawImage(sticker.img, -sticker.size / 2, -sticker.size / 2, sticker.size, sticker.size);
+      hiCtx.restore();
+    });
+
+    outputCtx.clearRect(0, 0, outputWidth, outputHeight);
+    outputCtx.drawImage(hiRes, 0, 0, outputWidth, outputHeight);
+    renderedFrames.push(outputCtx.getImageData(0, 0, outputWidth, outputHeight));
+  }
+
+  const bytesPerFrame = outputWidth * outputHeight * 4;
+  const paletteData = new Uint8Array(renderedFrames.length * bytesPerFrame);
+  renderedFrames.forEach((frame, index) => paletteData.set(frame.data, index * bytesPerFrame));
+  const palette = quantize(paletteData, 256);
+  const encoder = GIFEncoder();
+  renderedFrames.forEach((frame, index) => {
+    encoder.writeFrame(applyPalette(frame.data, palette), outputWidth, outputHeight, index === 0
+      ? { palette, delay: GIF_CAPTURE_INTERVAL, repeat: 0 }
+      : { delay: GIF_CAPTURE_INTERVAL });
+  });
+  encoder.finish();
+  return new Blob([encoder.bytes()], { type: 'image/gif' });
+}
+
+gifDownloadBtn.addEventListener('click', () => {
+  if (gifStripBlob) downloadBlob(gifStripBlob, 'timeless-gif-strip-' + Date.now() + '.gif');
+});
+
+gifShareBtn.addEventListener('click', async () => {
+  if (!gifStripBlob) return;
+  const file = new File([gifStripBlob], 'timeless-gif-strip.gif', { type: 'image/gif' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: 'My Timeless GIF Strip' });
+    } catch (err) {
+      if (err && err.name !== 'AbortError') toast('Could not share the GIF: ' + err.message);
+    }
+  } else {
+    downloadBlob(gifStripBlob, 'timeless-gif-strip-' + Date.now() + '.gif');
+    toast('GIF sharing is not supported here, so the GIF was saved instead.');
+  }
+});
 
 
 // ===================== AR FACE FILTERS (live) =====================
@@ -450,10 +755,13 @@ function arLoop() {
     }
     const vw = video.videoWidth, vh = video.videoHeight;
     if (arCanvas.width !== vw || arCanvas.height !== vh) { arCanvas.width = vw; arCanvas.height = vh; }
-    const ctx = arCanvas.getContext('2d');
-    ctx.clearRect(0, 0, vw, vh);
+    const now = performance.now();
+    if (selectedBackdrop !== 'none' && now - lastSegmentationTs > 66) {
+      const mask = FaceEngine.segmentVideo(video, now);
+      if (mask) updateSegmentationMask(mask);
+      lastSegmentationTs = now;
+    }
     if (arFilter !== 'none' && arReady) {
-      const now = performance.now();
       if (now - arLastTs > 33 && now > arLastTs) {       // ~30 fps detection
         const f = FaceEngine.detectVideo(video, now);
         if (f) arFaces = f;
@@ -464,6 +772,8 @@ function arLoop() {
     } else if (arReady && arFaces.length) {
       FaceEngine.reset(); arFaces = [];      // filter off: forget old positions
     }
+    const ctx = arCanvas.getContext('2d');
+    drawCameraScene(ctx, vw, vh, false);
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
@@ -1136,6 +1446,22 @@ editFinalizeBtn.addEventListener('click', async () => {
   Fx.loading.show();
   try {
     const blob = await composeStrip();
+    resetGifStrip();
+    gifStripStatus.textContent = 'Building your animated strip…';
+    try {
+      gifStripBlob = await composeGifStrip();
+      gifStripUrl = URL.createObjectURL(gifStripBlob);
+      finalGif.src = gifStripUrl;
+      finalGif.classList.remove('hidden');
+      gifDownloadBtn.disabled = false;
+      gifShareBtn.disabled = false;
+      gifStripStatus.textContent = 'Every photo is animated together in a looping boomerang.';
+    } catch (gifError) {
+      console.error('Could not build animated strip:', gifError);
+      gifStripStatus.textContent = 'The photo strip is ready, but its GIF could not be created. Retake the strip or try again.';
+      toast('Photo strip saved; GIF creation failed: ' + gifError.message);
+    }
+
     if (!currentStripId) currentStripId = 'strip-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     try {
       await StripStore.save({
@@ -1236,6 +1562,10 @@ function showStrip(blob, isPast) {
   if (currentUrl) URL.revokeObjectURL(currentUrl);
   currentBlob = blob;
   viewingPast = isPast;
+  if (isPast) {
+    resetGifStrip();
+    gifStripStatus.textContent = 'GIFs are created with new captures and are not stored in the past-strip gallery.';
+  }
 
   const has = !!blob;
   finalImg.classList.toggle('hidden', !has);
@@ -1373,10 +1703,10 @@ printBtn.addEventListener('click', () => printStrip(currentBlob).catch((e) => {
   console.error(e); toast('Could not print.');
 }));
 
-function downloadBlob(blob) {
+function downloadBlob(blob, filename) {
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = 'timeless-strip-' + Date.now() + '.png';
+  link.download = filename || 'timeless-strip-' + Date.now() + '.png';
   document.body.appendChild(link);
   link.click();
   link.remove();

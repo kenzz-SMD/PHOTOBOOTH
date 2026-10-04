@@ -1,9 +1,9 @@
 // Timeless Strips - service worker (offline mode)
 // * App files + built-in templates are precached so the booth opens with no internet.
 // * Same-origin files: network first (always fresh when online), cache as fallback.
-// * Face-AI library/model from CDNs: cached the first time they are used, then cache first.
+// * Face/segmentation AI models and the GIF encoder from CDNs: cached after first use.
 // * Cloud sync (Supabase) requests are never cached - the app queues changes while offline.
-const VERSION = 'v25'; // bump
+const VERSION = 'v30'; // bump
 const CACHE = 'timeless-strips-' + VERSION;
 const CDN_HOSTS = ['cdn.jsdelivr.net', 'storage.googleapis.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];   // fonts are cached too, so the title font also works offline
 

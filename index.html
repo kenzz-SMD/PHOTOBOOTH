@@ -103,6 +103,9 @@
           <h2 id="camera-rail-title">Photo moments</h2>
           <span class="camera-rail-count"><b id="camera-shot-count">0</b>/<span id="camera-shot-total">4</span></span>
         </div>
+        <div id="camera-shot-meter" class="camera-shot-meter" role="progressbar" aria-label="Photo capture progress" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0">
+          <span id="camera-shot-meter-fill"></span>
+        </div>
         <p id="camera-shot-progress" class="camera-rail-note" aria-live="polite">Your photos will appear here as you go.</p>
         <ol id="camera-shots" aria-label="Photos in this strip"></ol>
       </aside>
@@ -113,8 +116,23 @@
     <div id="ar-bar" aria-label="Face filters"></div>
     <p id="ar-status" class="edit-hint"></p>
 
+    <section class="camera-addons" aria-label="Camera add-ons">
+      <label class="backdrop-control" for="backdrop-select">
+        <span>🌈 Green-screen backdrop</span>
+        <select id="backdrop-select">
+          <option value="none">Original camera background</option>
+          <option value="sunset">Golden hour beach</option>
+          <option value="blossom">Blossom garden</option>
+          <option value="ocean">Lavender ocean</option>
+          <option value="studio">Candy studio</option>
+        </select>
+      </label>
+      <p id="backdrop-status" class="edit-hint" aria-live="polite">Choose a backdrop to replace the background behind you.</p>
+    </section>
+
     <br>
     <button id="strip-btn">🎞️ Capture Strip (4 Photos)</button>
+    <p class="capture-output-note">One capture creates a print-ready photo strip and an animated GIF strip.</p>
     <button id="change-template-btn" data-i18n="btn.change">🖼️ Change Template</button>
     <button id="gallery-btn" data-i18n="btn.gallery">🗂️ Gallery</button>
   </div>
@@ -150,8 +168,21 @@
   <div id="result-screen" class="hidden">
     <h1 data-i18n="result.title">Your Strip</h1>
 
-    <div id="result-preview">
-      <img id="final-strip" alt="Your photo strip" class="hidden">
+    <div id="result-preview" class="dual-output-grid">
+      <section class="output-panel" aria-labelledby="photo-strip-title">
+        <h2 id="photo-strip-title">📸 Photo Strip</h2>
+        <p class="edit-hint output-hint-spacer" aria-hidden="true"></p>
+        <img id="final-strip" alt="Your photo strip" class="hidden">
+      </section>
+      <section id="gif-output-panel" class="output-panel" aria-labelledby="gif-strip-title">
+        <h2 id="gif-strip-title">🎞️ GIF Strip</h2>
+        <p id="gif-strip-status" class="edit-hint" aria-live="polite">Your animated strip will appear here.</p>
+        <img id="final-gif" alt="Your animated photo strip" class="hidden">
+        <div class="result-actions gif-actions">
+          <button id="gif-download-btn" type="button" disabled>💾 Save GIF</button>
+          <button id="gif-share-btn" type="button" disabled>📤 Share GIF</button>
+        </div>
+      </section>
       <p id="result-empty" class="muted hidden" data-i18n="result.empty">No strip selected yet. Take one, or pick one from the gallery below.</p>
     </div>
 
