@@ -5,7 +5,7 @@
 
 const BUILTIN_TEMPLATES = [
   {
-    id: 'template1', name: 'Kiss Please', src: 'templates/template1.png', builtin: true,
+    id: 'template1', name: 'Kiss Please', src: 'templates/template1.png', builtin: true, categoryId: 'cat-romantic',
     slots: [
       { x: 52, y: 75,   w: 483, h: 313 },
       { x: 58, y: 435,  w: 483, h: 313 },
@@ -14,7 +14,7 @@ const BUILTIN_TEMPLATES = [
     ]
   },
   {
-    id: 'template2', name: 'Life in Frames', src: 'templates/template2.png', builtin: true,
+    id: 'template2', name: 'Life in Frames', src: 'templates/template2.png', builtin: true, categoryId: 'cat-custom',
     slots: [
       { x: 58, y: 75,   w: 483, h: 313 },
       { x: 58, y: 438,  w: 483, h: 313 },
@@ -24,10 +24,29 @@ const BUILTIN_TEMPLATES = [
   }
 ];
 
+// ===================== TEMPLATE CATEGORIES =====================
+// These ten start out in every library. The admin can rename, reorder, hide or add to them
+// (changes are stored as small records and synced); templates with no category fall back to
+// "Custom / User-Defined". `key` is used to translate the default names in the photobooth.
+const BUILTIN_CATEGORIES = [
+  { id: 'cat-romantic',  key: 'romantic',  name: 'Romantic',               emoji: '💖' },
+  { id: 'cat-vintage',   key: 'vintage',   name: 'Vintage',                emoji: '📻' },
+  { id: 'cat-fun',       key: 'fun',       name: 'Fun & Playful',         emoji: '🎈' },
+  { id: 'cat-seasonal',  key: 'seasonal',  name: 'Seasonal',               emoji: '🎄' },
+  { id: 'cat-elegant',   key: 'elegant',   name: 'Elegant',                emoji: '🥂' },
+  { id: 'cat-nature',    key: 'nature',    name: 'Nature',                 emoji: '🌸' },
+  { id: 'cat-party',     key: 'party',     name: 'Party & Celebration',   emoji: '🎉' },
+  { id: 'cat-corporate', key: 'corporate', name: 'Corporate / Branding',  emoji: '🏢' },
+  { id: 'cat-travel',    key: 'travel',    name: 'Travel & Adventure',    emoji: '✈️' },
+  { id: 'cat-custom',    key: 'custom',    name: 'Custom / User-Defined', emoji: '🎨' }
+];
+const DEFAULT_CATEGORY_ID = 'cat-custom';
+
 const TemplateStore = (() => {
   const DB_NAME = 'timeless-strips';
   const STORE = 'templates';   // uploaded templates
   const STRIPS = 'strips';     // gallery of finished photo strips
+  const CATS = 'categories';   // category overrides + admin-made categories
   const MAX_STRIPS = 24;       // keep the newest 24 in the gallery
   let dbPromise = null;
 
@@ -38,11 +57,12 @@ const TemplateStore = (() => {
     if (dbPromise) return dbPromise;
     dbPromise = new Promise((resolve, reject) => {
       if (!('indexedDB' in window)) { reject(new Error('IndexedDB not supported')); return; }
-      const req = indexedDB.open(DB_NAME, 2);
+      const req = indexedDB.open(DB_NAME, 3);
       req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
         if (!db.objectStoreNames.contains(STRIPS)) db.createObjectStore(STRIPS, { keyPath: 'id' });
+        if (!db.objectStoreNames.contains(CATS)) db.createObjectStore(CATS, { keyPath: 'id' });
       };
       req.onsuccess = () => {
         req.result.onversionchange = () => { req.result.close(); dbPromise = null; };
@@ -67,6 +87,7 @@ const TemplateStore = (() => {
 
   return {
     _run: run,
+    _notify: notify,
     uid: () => 'custom-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
 
     async list() {
@@ -87,11 +108,18 @@ const TemplateStore = (() => {
       if (typeof CloudSync !== 'undefined') CloudSync.tombstone('template', id);
     },
 
+    // Move an uploaded template to another category
+    async setCategory(id, categoryId) {
+      const rec = await run(STORE, 'readonly', (s) => s.get(id));
+      if (!rec) return;
+      await this.save(Object.assign({}, rec, { categoryId }));
+    },
+
     // Templates in the shape the photobooth uses
     async loadForApp() {
       const recs = await this.list();
       return recs.map((r) => ({
-        id: r.id, name: r.name, slots: r.slots, custom: true,
+        id: r.id, name: r.name, slots: r.slots, custom: true, categoryId: r.categoryId || DEFAULT_CATEGORY_ID,
         src: URL.createObjectURL(r.blob)
       }));
     },
@@ -111,7 +139,7 @@ const TemplateStore = (() => {
         const { blob, ...meta } = r;
         out.push({ ...meta, data });
       }
-      return JSON.stringify({ app: 'timeless-strips', version: 1, templates: out });
+      return JSON.stringify({ app: 'timeless-strips', version: 1, templates: out, categories: await CategoryStore.raw() });
     },
 
     async importAll(jsonText) {
@@ -125,12 +153,99 @@ const TemplateStore = (() => {
         await run(STORE, 'readwrite', (s) => s.put({ ...meta, id: meta.id || this.uid(), blob }));
         n++;
       }
+      for (const c of (parsed.categories || [])) {
+        if (c && c.id) await run(CATS, 'readwrite', (s) => s.put(c));
+      }
       notify();
       return n;
     }
   };
 
 })();
+
+// ===================== CATEGORY STORE =====================
+// list() returns the effective categories: the ten defaults merged with the admin's changes,
+// plus any categories the admin added, sorted by `order`. Hidden (deleted) defaults are skipped
+// unless includeHidden is set.
+const CategoryStore = {
+  async raw() { return (await TemplateStore._run('categories', 'readonly', (s) => s.getAll())) || []; },
+
+  async list(opts) {
+    const raw = await this.raw();
+    const byId = new Map(raw.map((r) => [r.id, r]));
+    const out = [];
+    BUILTIN_CATEGORIES.forEach((d, i) => {
+      const r = byId.get(d.id); byId.delete(d.id);
+      out.push({
+        id: d.id, key: d.key, builtin: true,
+        name: (r && r.name) || d.name, customName: !!(r && r.name),
+        emoji: (r && r.emoji) || d.emoji,
+        order: (r && typeof r.order === 'number') ? r.order : (i + 1) * 10,
+        hidden: !!(r && r.hidden)
+      });
+    });
+    byId.forEach((r) => out.push({
+      id: r.id, builtin: false, name: r.name || 'Untitled', customName: true,
+      emoji: r.emoji || '🏷️', order: typeof r.order === 'number' ? r.order : 1000, hidden: false
+    }));
+    out.sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+    return (opts && opts.includeHidden) ? out : out.filter((c) => !c.hidden);
+  },
+
+  async _put(rec) {
+    rec.updatedAt = Date.now();
+    await TemplateStore._run('categories', 'readwrite', (s) => s.put(rec));
+    TemplateStore._notify();
+    if (typeof CloudSync !== 'undefined') CloudSync.queue();
+  },
+
+  // Change some fields of a category (creates the override record for a default one)
+  async update(id, patch) {
+    const cur = (await this.raw()).find((r) => r.id === id) || { id, createdAt: Date.now() };
+    await this._put(Object.assign({}, cur, patch, { id }));
+  },
+
+  async add(name, emoji) {
+    const all = await this.list({ includeHidden: true });
+    const rec = {
+      id: 'cat-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name, emoji: emoji || '🏷️',
+      order: Math.max(0, ...all.map((c) => c.order)) + 10, createdAt: Date.now()
+    };
+    await this._put(rec);
+    return rec;
+  },
+
+  // dir = -1 (up) or +1 (down) among the visible categories
+  async move(id, dir) {
+    const all = await this.list();
+    const i = all.findIndex((c) => c.id === id), j = i + dir;
+    if (i < 0 || j < 0 || j >= all.length) return;
+    const ids = all.map((c) => c.id);
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    for (let k = 0; k < ids.length; k++) {
+      const c = all.find((x) => x.id === ids[k]);
+      if (c.order !== (k + 1) * 10) await this.update(c.id, { order: (k + 1) * 10 });
+    }
+  },
+
+  // Default categories are hidden (so the admin can bring them back); added ones are removed.
+  // "Custom / User-Defined" can't be removed: it is where templates land when a category is deleted.
+  async remove(id) {
+    if (id === DEFAULT_CATEGORY_ID) return;
+    const c = (await this.list({ includeHidden: true })).find((x) => x.id === id);
+    if (!c) return;
+    if (c.builtin) { await this.update(id, { hidden: true }); return; }
+    await TemplateStore._run('categories', 'readwrite', (s) => s.delete(id));
+    TemplateStore._notify();
+    if (typeof CloudSync !== 'undefined') CloudSync.tombstone('category', id);
+  },
+
+  async restoreDefaults() {
+    const all = await this.list({ includeHidden: true });
+    for (const c of all) if (c.hidden) await this.update(c.id, { hidden: false });
+  }
+};
 
 // ===================== GALLERY OF PAST STRIPS =====================
 const StripStore = {
@@ -166,7 +281,7 @@ const CloudSync = (() => {
   const TOMB_KEY = 'ts-cloud-tombs';      // { 'kind:id': deletedAt }
   const CURSOR_KEY = 'ts-cloud-cursor';
   const BUCKET = 'timeless-strips';
-  const KINDS = { template: 'templates', strip: 'strips' };
+  const KINDS = { template: 'templates', strip: 'strips', category: 'categories' };
 
   const ls = {
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
@@ -272,12 +387,18 @@ const CloudSync = (() => {
 
     const admin = !!getSess();
     for (const kind of kinds()) {
-      if (kind === 'template' && !admin) continue;      // guests never write templates
+      if ((kind === 'template' || kind === 'category') && !admin) continue;   // guests never write templates/categories
       const recs = await TemplateStore._run(KINDS[kind], 'readonly', (s) => s.getAll()) || [];
       for (const rec of recs) {
         const key = kind + ':' + rec.id;
         const ver = rec.updatedAt || rec.createdAt || 1;
-        if (tombs[key] || (pushed[key] || 0) >= ver || !rec.blob) continue;
+        if (tombs[key] || (pushed[key] || 0) >= ver) continue;
+        if (kind === 'category') {                       // small record, no image
+          await upsertRows([{ lib: c.lib, id: rec.id, kind, data: rec, deleted: false, updated_at: ver }]);
+          pushed[key] = ver; ls.set(PUSHED_KEY, pushed);
+          continue;
+        }
+        if (!rec.blob) continue;
         await upload(kind, rec);
         const { blob, ...meta } = rec;
         await upsertRows([{ lib: c.lib, id: rec.id, kind, data: meta, deleted: false, updated_at: ver }]);
@@ -286,7 +407,7 @@ const CloudSync = (() => {
       }
     }
     for (const key of Object.keys(tombs)) {
-      if (key.startsWith('template:') && !admin) continue;
+      if ((key.startsWith('template:') || key.startsWith('category:')) && !admin) continue;
       const [kind, ...rest] = key.split(':');
       const id = rest.join(':');
       await upsertRows([{ lib: c.lib, id, kind, data: {}, deleted: true, updated_at: tombs[key] }]);
@@ -334,6 +455,12 @@ const CloudSync = (() => {
         continue;
       }
       if (localVer >= row.updated_at) continue;
+      if (kind === 'category') {
+        await TemplateStore._run(store, 'readwrite', (s) => s.put(Object.assign({}, row.data, { id: row.id, updatedAt: row.updated_at })));
+        pushed[key] = row.updated_at;
+        changed = true;
+        continue;
+      }
       if (kind === 'strip' && skipStrips > 0) { skipStrips--; continue; }
 
       const res = await fetch(base() + '/storage/v1/object/public/' + BUCKET + '/' + objPath(kind, row.id) +
@@ -376,77 +503,7 @@ const CloudSync = (() => {
   // ---- Realtime: Supabase Realtime over a WebSocket (Phoenix protocol, no library) ----
   // When another device writes to ts_items we get a push and sync immediately.
   // Polling stays as a slow safety net, and as the main path if the socket can't connect.
-  let RT_TOPIC = 'realtime:ts-items';
-
-  // ---- Device tracking: this device announces itself (presence) and logs activity ----
-  const DEV_KEY = 'ts-device-id';
-  const BUCKET_MS = 5 * 60 * 1000;                 // activity is logged in 5-minute buckets
-  let deviceId = ls.get(DEV_KEY, null);
-  if (!deviceId) { deviceId = 'dev-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); ls.set(DEV_KEY, deviceId); }
-
-  function deviceInfo() {
-    const ua = navigator.userAgent || '';
-    const touch = (navigator.maxTouchPoints || 0) > 1;
-    let type = 'desktop';
-    if (/iPad|Tablet/i.test(ua) || (/Macintosh/.test(ua) && touch) || (/Android/i.test(ua) && !/Mobile/i.test(ua))) type = 'tablet';
-    else if (/Mobi|iPhone|iPod|Android/i.test(ua)) type = 'mobile';
-    const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\/|Opera/.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox'
-      : /SamsungBrowser/.test(ua) ? 'Samsung' : /Chrome\/|CriOS/.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Other';
-    const os = /Windows/.test(ua) ? 'Windows' : /Android/.test(ua) ? 'Android' : /iPhone|iPad|iPod/.test(ua) ? 'iOS'
-      : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /CrOS/.test(ua) ? 'ChromeOS' : /Linux/.test(ua) ? 'Linux' : 'Other';
-    return { type, browser, os };
-  }
-  const tracking = () => (getConfig() || {}).trackDevices !== false;
-
-  const presence = {};                 // device id -> [metas]  (live, from Realtime Presence)
-  const presenceCbs = [];
-  function livePeople() {
-    return Object.keys(presence).filter((k) => presence[k].length).map((k) => {
-      const m = presence[k][0];
-      return { id: k, type: m.type, browser: m.browser, os: m.os, role: m.role, since: m.since, tabs: presence[k].length, me: k === deviceId };
-    }).sort((a, b) => (a.since || 0) - (b.since || 0));
-  }
-  function emitPresence() { const l = livePeople(); presenceCbs.forEach((cb) => { try { cb(l); } catch (e) {} }); }
-  function metasOf(v) { return (v && v.metas) || []; }
-  function presenceState(state) {
-    Object.keys(presence).forEach((k) => delete presence[k]);
-    Object.keys(state || {}).forEach((k) => { presence[k] = metasOf(state[k]).slice(); });
-    emitPresence();
-  }
-  function presenceDiff(d) {
-    Object.keys((d && d.leaves) || {}).forEach((k) => {
-      const gone = metasOf(d.leaves[k]).map((m) => m.phx_ref);
-      presence[k] = (presence[k] || []).filter((m) => gone.indexOf(m.phx_ref) < 0);
-      if (!presence[k].length) delete presence[k];
-    });
-    Object.keys((d && d.joins) || {}).forEach((k) => {
-      const have = (presence[k] || []);
-      metasOf(d.joins[k]).forEach((m) => { if (!have.some((x) => x.phx_ref === m.phx_ref)) have.push(m); });
-      presence[k] = have;
-    });
-    emitPresence();
-  }
-  function clearPresence() { Object.keys(presence).forEach((k) => delete presence[k]); emitPresence(); }
-
-  // log "this device is active now": last-seen row + one activity row per 5-minute bucket
-  async function ping() {
-    if (!enabled() || !tracking() || !navigator.onLine || document.hidden) return;
-    const c = getConfig(), info = deviceInfo(), now = Date.now();
-    try {
-      await fetch(base() + '/rest/v1/ts_devices?on_conflict=lib,id', {
-        method: 'POST',
-        headers: hdr({ 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
-        body: JSON.stringify({ lib: c.lib, id: deviceId, type: info.type, browser: info.browser, os: info.os,
-          role: getSess() ? 'admin' : 'guest', last_seen: now })
-      });
-      await fetch(base() + '/rest/v1/ts_device_activity?on_conflict=lib,id,bucket', {
-        method: 'POST',
-        headers: hdr({ 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=minimal' }),
-        body: JSON.stringify({ lib: c.lib, id: deviceId, bucket: Math.floor(now / BUCKET_MS) })
-      });
-    } catch (e) { /* tracking must never disturb the booth */ }
-  }
-  let pingTimer = null;
+  const RT_TOPIC = 'realtime:ts-items';
   let ws = null, wsTimer = null, wsBeat = null, wsRetry = 0, wsRef = 0, wsDebounce = null;
 
   function setLive(v) {
@@ -455,7 +512,7 @@ const CloudSync = (() => {
     statusCbs.forEach((cb) => { try { cb(status); } catch (e) {} });
   }
   function closeRealtime() {
-    clearTimeout(wsTimer); clearInterval(wsBeat); clearInterval(pingTimer);
+    clearTimeout(wsTimer); clearInterval(wsBeat);
     if (ws) { ws.onclose = null; try { ws.close(); } catch (e) {} ws = null; }
     setLive(false);
   }
@@ -469,17 +526,13 @@ const CloudSync = (() => {
         encodeURIComponent(c.key) + '&vsn=1.0.0');
     } catch (e) { return; }
     ws = sock;
-    RT_TOPIC = 'realtime:ts-' + String(c.lib).replace(/[^A-Za-z0-9_-]/g, '_');
-    let joinRef = null;
     const send = (topic, event, payload) => {
-      const ref = String(++wsRef);
-      if (sock.readyState === 1) sock.send(JSON.stringify({ topic, event, payload, ref }));
-      return ref;
+      if (sock.readyState === 1) sock.send(JSON.stringify({ topic, event, payload, ref: String(++wsRef) }));
     };
     sock.onopen = () => {
-      joinRef = send(RT_TOPIC, 'phx_join', {
+      send(RT_TOPIC, 'phx_join', {
         config: {
-          broadcast: { self: false }, presence: { key: deviceId },
+          broadcast: { self: false }, presence: { key: '' },
           postgres_changes: [{ event: '*', schema: 'public', table: 'ts_items', filter: 'lib=eq.' + c.lib }]
         },
         access_token: (getSess() || {}).access_token || (/^sb_/.test(c.key) ? undefined : c.key)
@@ -488,20 +541,9 @@ const CloudSync = (() => {
     };
     sock.onmessage = (ev) => {
       let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
-      if (m.event === 'phx_reply' && m.topic === RT_TOPIC && m.ref === joinRef) {
-        if (m.payload && m.payload.status === 'ok') {
-          wsRetry = 0; setLive(true); sync();
-          if (tracking()) {                              // announce this device
-            const i = deviceInfo();
-            send(RT_TOPIC, 'presence', { type: 'presence', event: 'track',
-              payload: { type: i.type, browser: i.browser, os: i.os, role: getSess() ? 'admin' : 'guest', since: Date.now() } });
-            ping(); clearInterval(pingTimer); pingTimer = setInterval(ping, 120000);
-          }
-        } else setLive(false);
-      } else if (m.event === 'presence_state') {
-        presenceState(m.payload);
-      } else if (m.event === 'presence_diff') {
-        presenceDiff(m.payload);
+      if (m.event === 'phx_reply' && m.topic === RT_TOPIC) {
+        if (m.payload && m.payload.status === 'ok') { wsRetry = 0; setLive(true); sync(); }
+        else setLive(false);
       } else if (m.event === 'postgres_changes') {
         clearTimeout(wsDebounce); wsDebounce = setTimeout(sync, 250);
       } else if (m.event === 'phx_error' || m.event === 'phx_close') {
@@ -509,9 +551,9 @@ const CloudSync = (() => {
       }
     };
     sock.onclose = () => {
-      clearInterval(wsBeat); clearInterval(pingTimer);
+      clearInterval(wsBeat);
       if (ws !== sock) return;
-      ws = null; setLive(false); clearPresence();
+      ws = null; setLive(false);
       wsTimer = setTimeout(openRealtime, Math.min(30000, 1000 * Math.pow(2, wsRetry++)));
     };
     sock.onerror = () => {};
@@ -530,21 +572,10 @@ const CloudSync = (() => {
 
   window.addEventListener('online', () => { sync(); openRealtime(); });
   window.addEventListener('offline', () => { closeRealtime(); setStatus(enabled() ? 'offline' : 'off'); });
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { sync(); ping(); } });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(); });
 
   return {
     getConfig, enabled,
-    deviceId, onPresence(cb) { presenceCbs.push(cb); cb(livePeople()); }, get live() { return livePeople(); },
-    // admin-only REST helper (uses the signed-in admin's token)
-    async rest(path, init) {
-      if (!enabled()) throw new Error('nocloud');
-      const res = await fetch(base() + '/rest/v1/' + path, Object.assign({}, init, {
-        headers: hdr(Object.assign({ 'Content-Type': 'application/json' }, (init && init.headers) || {}))
-      }));
-      await check(res, 'Request');
-      const t = await res.text();
-      return t ? JSON.parse(t) : null;
-    },
     // Upload one strip image and return its public URL (used for the QR / share links)
     async publishStrip(blob) {
       if (!enabled()) throw new Error('nocloud');

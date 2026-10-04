@@ -1,6 +1,6 @@
 // ===================== DEVICE TRACKER (stand-alone) =====================
 // Load on EVERY page (booth + admin) after cloud-config.js and templates-store.js:
-//   <script src="device-tracker.js"></script>
+//   <script src="device-tracer.js"></script>
 // Each device announces itself with Supabase Realtime Presence (so admins see a live counter)
 // and logs activity to the database (so admins get history + graphs).
 // Stores only: a random id, device type, browser, OS and timestamps. Needs nothing else from the app.
@@ -43,7 +43,8 @@ const DeviceTracker = (() => {
 
   // ---- live presence ----
   const presence = {}, cbs = [], statusCbs = [];
-  let ws = null, beat = null, pingT = null, retryT = null, retry = 0, ref = 0, connected = false, lastError = '';
+  let ws = null, beat = null, pingT = null, retryT = null, retry = 0, ref = 0, connected = false, lastError = '', trackedRole = '';
+  const roleNow = () => (validSess() ? 'admin' : 'guest');
 
   const list = () => Object.keys(presence).filter((k) => presence[k].length).map((k) => {
     const m = presence[k][0];
@@ -98,7 +99,8 @@ const DeviceTracker = (() => {
         if (m.payload && m.payload.status === 'ok') {
           retry = 0; connected = true; lastError = '';
           const i = info();
-          send(topic, 'presence', { type: 'presence', event: 'track', payload: { type: i.type, browser: i.browser, os: i.os, role: validSess() ? 'admin' : 'guest', since: Date.now() } });
+          trackedRole = roleNow();
+          send(topic, 'presence', { type: 'presence', event: 'track', payload: { type: i.type, browser: i.browser, os: i.os, role: trackedRole, since: Date.now() } });
           ping(); clearInterval(pingT); pingT = setInterval(ping, 120000);
           emitStatus();
         } else {
@@ -150,7 +152,11 @@ const DeviceTracker = (() => {
 
   function start() {
     if (tracking()) connect();
-    setInterval(() => { if (!ws && tracking() && navigator.onLine) connect(); }, 15000);   // picks up settings saved later
+    setInterval(() => {                                                                      // picks up settings saved later
+      if (!tracking() || !navigator.onLine) return;
+      if (!ws) connect();
+      else if (connected && trackedRole !== roleNow()) connect();                            // logged in/out since we announced
+    }, 15000);
     window.addEventListener('online', connect);
     window.addEventListener('offline', disconnect);
     window.addEventListener('admin-unlocked', connect);                                      // re-announce as admin

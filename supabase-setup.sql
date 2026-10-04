@@ -8,7 +8,7 @@
 create table if not exists public.ts_items (
   lib        text    not null,
   id         text    not null,
-  kind       text    not null check (kind in ('template','strip')),
+  kind       text    not null check (kind in ('template','strip','category')),
   data       jsonb   not null default '{}'::jsonb,
   deleted    boolean not null default false,
   updated_at bigint  not null,
@@ -22,7 +22,7 @@ create table if not exists public.ts_admins (email text primary key);
 alter table public.ts_admins enable row level security;     -- no policies: nobody can read/edit it from the app
 
 -- >>> CHANGE THIS to the email of the admin user you create in Authentication -> Users <<<
-insert into public.ts_admins (email) values ('admin@example.com') on conflict do nothing;
+insert into public.ts_admins (email) values ('beryangii@shaun.com') on conflict do nothing;
 
 create or replace function public.ts_is_admin() returns boolean
 language sql security definer stable set search_path = public as $$
@@ -65,6 +65,20 @@ create policy "ts files update" on storage.objects for update to anon, authentic
 do $$ begin
   alter publication supabase_realtime add table public.ts_items;
 exception when duplicate_object then null;
+end $$;
+
+-- 5b) Template categories: allow the 'category' record kind.
+--     (Writes stay admin-only: the policies above only let guests write 'strip' rows.)
+do $$
+declare c text;
+begin
+  for c in select conname from pg_constraint
+           where conrelid = 'public.ts_items'::regclass and contype = 'c'
+             and pg_get_constraintdef(oid) ilike '%kind%' loop
+    execute format('alter table public.ts_items drop constraint %I', c);
+  end loop;
+  alter table public.ts_items
+    add constraint ts_items_kind_check check (kind in ('template','strip','category'));
 end $$;
 
 -- ============================================================
@@ -111,29 +125,34 @@ create policy "act insert" on public.ts_device_activity for insert to anon, auth
 create policy "act read"   on public.ts_device_activity for select to authenticated using (public.ts_is_admin());
 create policy "act delete" on public.ts_device_activity for delete to authenticated using (public.ts_is_admin());
 
--- Graph data: for each time slot -> peak devices at once (5-min resolution) + unique devices
+-- Graph data: for each time slot -> peak devices at once (5-min resolution) + unique devices.
+-- Admin devices are left out, so these numbers match the "guests" counter on the dashboard.
 create or replace function public.ts_activity_stats(p_lib text, p_since bigint, p_step bigint)
 returns table(slot bigint, peak int, uniq int)
 language sql security definer stable set search_path = public as $$
-  select (a.bucket * 300000 / p_step) as slot,
-         max(c.cnt)::int              as peak,
-         count(distinct a.id)::int    as uniq
-  from public.ts_device_activity a
-  join (select bucket, count(*) as cnt from public.ts_device_activity
-        where lib = p_lib and bucket >= p_since / 300000 group by bucket) c using (bucket)
-  where a.lib = p_lib and a.bucket >= p_since / 300000 and public.ts_is_admin()
+  select (x.bucket * 300000 / p_step) as slot,
+         max(x.cnt)::int              as peak,
+         count(distinct x.id)::int    as uniq
+  from (select a.bucket, a.id, count(*) over (partition by a.bucket) as cnt
+        from public.ts_device_activity a
+        left join public.ts_devices d on d.lib = a.lib and d.id = a.id
+        where a.lib = p_lib and a.bucket >= p_since / 300000
+          and coalesce(d.role, 'guest') <> 'admin') x
+  where public.ts_is_admin()
   group by 1 order by 1;
 $$;
 
--- Totals for a period
+-- Totals for a period (guests only)
 create or replace function public.ts_activity_summary(p_lib text, p_since bigint)
 returns table(peak int, uniq int)
 language sql security definer stable set search_path = public as $$
-  select coalesce(max(cnt), 0)::int,
-         (select count(distinct id) from public.ts_device_activity
-           where lib = p_lib and bucket >= p_since / 300000)::int
-  from (select count(*) as cnt from public.ts_device_activity
-        where lib = p_lib and bucket >= p_since / 300000 and public.ts_is_admin() group by bucket) t;
+  select coalesce(max(x.cnt), 0)::int, count(distinct x.id)::int
+  from (select a.bucket, a.id, count(*) over (partition by a.bucket) as cnt
+        from public.ts_device_activity a
+        left join public.ts_devices d on d.lib = a.lib and d.id = a.id
+        where a.lib = p_lib and a.bucket >= p_since / 300000
+          and coalesce(d.role, 'guest') <> 'admin') x
+  where public.ts_is_admin();
 $$;
 
 -- Housekeeping: delete tracking data older than p_before (ms since epoch)
