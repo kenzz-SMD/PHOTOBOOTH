@@ -53,6 +53,10 @@
     if (!DeviceTracker.configured()) $('dv-msg').textContent = 'Cloud sync is not set up. Fill in cloud-config.js (or the Cloud sync card) first.';
     else if (!DeviceTracker.tracking()) $('dv-msg').textContent = 'Device tracking is turned off (trackDevices: false in cloud-config.js).';
     else if (!ok && DeviceTracker.error) $('dv-msg').textContent = DeviceTracker.error;
+    else if (ok && !DeviceTracker.live.length && Date.now() - DeviceTracker.connectedAt > 6000)
+      $('dv-msg').textContent = 'Connected, but the live channel is not reporting any devices (not even this one). Check that Realtime is enabled for your Supabase project, then reload.';
+    else if (ok && !DeviceTracker.live.some((p) => p.role !== 'admin'))
+      $('dv-msg').textContent = 'Waiting for guests. Open the photobooth on another phone or browser where you are NOT signed in as admin: a browser signed in as admin counts as an admin, not a guest.';
     else $('dv-msg').textContent = histErr;
   }
 

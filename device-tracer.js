@@ -43,6 +43,7 @@ const DeviceTracker = (() => {
 
   // ---- live presence ----
   const presence = {}, cbs = [], statusCbs = [];
+  let connectedAt = 0;
   let ws = null, beat = null, pingT = null, retryT = null, retry = 0, ref = 0, connected = false, lastError = '', trackedRole = '';
   const roleNow = () => (validSess() ? 'admin' : 'guest');
 
@@ -90,21 +91,21 @@ const DeviceTracker = (() => {
     const send = (t, ev, p) => { const r = String(++ref); if (sock.readyState === 1) sock.send(JSON.stringify({ topic: t, event: ev, payload: p, ref: r })); return r; };
 
     sock.onopen = () => {
-      joinRef = send(topic, 'phx_join', { config: { broadcast: { self: false }, presence: { key: deviceId }, postgres_changes: [] }, access_token: bearer() || undefined });
+      joinRef = send(topic, 'phx_join', { config: { broadcast: { self: false }, presence: { key: deviceId, enabled: true }, private: false, postgres_changes: [] }, access_token: bearer() || undefined });
       beat = setInterval(() => send('phoenix', 'heartbeat', {}), 25000);
     };
     sock.onmessage = (e) => {
       let m; try { m = JSON.parse(e.data); } catch (x) { return; }
       if (m.event === 'phx_reply' && m.topic === topic && m.ref === joinRef) {
         if (m.payload && m.payload.status === 'ok') {
-          retry = 0; connected = true; lastError = '';
+          retry = 0; connected = true; connectedAt = Date.now(); lastError = '';
           const i = info();
           trackedRole = roleNow();
           send(topic, 'presence', { type: 'presence', event: 'track', payload: { type: i.type, browser: i.browser, os: i.os, role: trackedRole, since: Date.now() } });
           ping(); clearInterval(pingT); pingT = setInterval(ping, 120000);
           emitStatus();
         } else {
-          connected = false; lastError = 'Could not join the live channel';
+          connected = false; const rs = (m.payload && m.payload.response) || {}; lastError = 'Could not join the live channel: ' + (rs.reason || rs.message || (m.payload && m.payload.status) || 'unknown error');
           emitStatus();
         }
       } else if (m.event === 'presence_state') {
@@ -124,6 +125,8 @@ const DeviceTracker = (() => {
           presence[k] = have;
         });
         emit();
+      } else if (m.event === 'system' && m.payload && m.payload.status === 'error') {
+        lastError = 'Realtime says: ' + (m.payload.message || 'error'); emitStatus();
       } else if (m.event === 'phx_error' || m.event === 'phx_close') { sock.close(); }
     };
     sock.onclose = () => {
@@ -166,7 +169,7 @@ const DeviceTracker = (() => {
 
   return {
     deviceId, rest, configured, tracking, restart: connect,
-    get live() { return list(); }, get connected() { return connected; }, get error() { return lastError; },
+    get live() { return list(); }, get connected() { return connected; }, get connectedAt() { return connectedAt; }, get error() { return lastError; },
     onPresence(cb) { cbs.push(cb); cb(list()); },
     onStatus(cb) { statusCbs.push(cb); cb({ connected, error: lastError }); }
   };
