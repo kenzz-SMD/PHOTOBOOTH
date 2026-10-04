@@ -58,6 +58,12 @@ const galleryBtn = $('gallery-btn');
 const canvas = $('canvas');
 const countdownEl = $('countdown');
 const flashEl = $('flash');
+const mirrorBtn = $('mirror-btn');
+const flashBtn = $('flash-btn');
+const cameraShotList = $('camera-shots');
+const cameraShotCount = $('camera-shot-count');
+const cameraShotTotal = $('camera-shot-total');
+const cameraShotProgress = $('camera-shot-progress');
 // pop animation every time the countdown number changes
 new MutationObserver(() => {
   countdownEl.classList.remove('tick');
@@ -92,6 +98,69 @@ const galleryEl = $('gallery');
 
 
 let cameraStarted = false;
+let mirrorOn = true;
+let flashOn = true;
+let cameraShotCards = [];
+
+function updateCameraTools() {
+  video.classList.toggle('is-unmirrored', !mirrorOn);
+  arCanvas.classList.toggle('is-unmirrored', !mirrorOn);
+  mirrorBtn.classList.toggle('is-on', mirrorOn);
+  mirrorBtn.setAttribute('aria-pressed', String(mirrorOn));
+  mirrorBtn.textContent = '↔ Mirror ' + (mirrorOn ? 'on' : 'off');
+  flashBtn.classList.toggle('is-on', flashOn);
+  flashBtn.setAttribute('aria-pressed', String(flashOn));
+  flashBtn.textContent = '⚡ Flash ' + (flashOn ? 'on' : 'off');
+}
+
+function prepareShotTray() {
+  const total = currentSlots().length;
+  cameraShotCards = [];
+  cameraShotCount.textContent = '0';
+  cameraShotTotal.textContent = String(total);
+  cameraShotProgress.textContent = 'Your photos will appear here as you go.';
+  cameraShotList.replaceChildren();
+
+  for (let i = 0; i < total; i++) {
+    const card = document.createElement('li');
+    card.className = 'camera-shot';
+    const thumb = document.createElement('div');
+    thumb.className = 'camera-shot-thumb';
+    const placeholder = document.createElement('span');
+    placeholder.className = 'camera-shot-placeholder';
+    placeholder.textContent = '✦';
+    const image = document.createElement('img');
+    image.alt = 'Photo ' + (i + 1);
+    image.className = 'hidden';
+    const number = document.createElement('span');
+    number.className = 'camera-shot-number';
+    number.textContent = String(i + 1).padStart(2, '0');
+    const status = document.createElement('span');
+    status.className = 'camera-shot-status';
+    status.textContent = 'Waiting';
+    thumb.append(placeholder, image);
+    card.append(thumb, number, status);
+    cameraShotList.appendChild(card);
+    cameraShotCards.push({ card, placeholder, image, status });
+  }
+}
+
+function markActiveShot(shotNumber) {
+  cameraShotCards.forEach((shot, i) => shot.card.classList.toggle('active', i === shotNumber - 1));
+  cameraShotProgress.textContent = 'Get ready for photo ' + shotNumber + ' of ' + cameraShotCards.length + '!';
+}
+
+mirrorBtn.addEventListener('click', () => {
+  mirrorOn = !mirrorOn;
+  updateCameraTools();
+});
+
+flashBtn.addEventListener('click', () => {
+  flashOn = !flashOn;
+  updateCameraTools();
+});
+
+updateCameraTools();
 
 function toast(msg) {
   const t = $('app-toast');
@@ -222,6 +291,7 @@ templateConfirm.addEventListener('click', () => {
   stickers = [];
   currentStripId = null;
 
+  prepareShotTray();
   startCamera();
 });
 
@@ -252,21 +322,45 @@ stripBtn.addEventListener('click', () => {
   stripBtn.disabled = true;
   changeTemplateBtn.disabled = true;
   galleryBtn.disabled = true;
+  prepareShotTray();
   captureStrip(1, []);
 });
 
 function captureStrip(shotNumber, photos) {
-  runCountdown(() => {
+  markActiveShot(shotNumber);
+  runCountdown(async () => {
     playShutter();
+    const stopDeviceFlash = await pulseDeviceFlash();
     triggerFlash();
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    if (arFilter !== 'none') {
-      drawArFaces(ctx, arFaces, arFilter);   // same smoothed faces as the live preview
+    try {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.save();
+      if (mirrorOn) {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      if (arFilter !== 'none') {
+        drawArFaces(ctx, arFaces, arFilter);   // same smoothed faces as the live preview
+      }
+      ctx.restore();
+      photos.push(canvas.toDataURL('image/png'));
+    } finally {
+      stopDeviceFlash();
     }
-    photos.push(canvas.toDataURL('image/png'));
+    const shot = cameraShotCards[shotNumber - 1];
+    shot.image.src = photos[photos.length - 1];
+    shot.image.classList.remove('hidden');
+    shot.placeholder.classList.add('hidden');
+    shot.status.textContent = 'Captured';
+    shot.card.classList.remove('active');
+    shot.card.classList.add('captured', 'latest');
+    cameraShotCount.textContent = String(photos.length);
+    cameraShotProgress.textContent = photos.length === cameraShotCards.length
+      ? 'Lovely! All ' + photos.length + ' photos are ready.'
+      : 'Photo ' + photos.length + ' of ' + cameraShotCards.length + ' captured!';
 
     if (shotNumber < currentSlots().length) {
       countdownEl.textContent = 'Next shot...';
@@ -1352,9 +1446,28 @@ galleryBtn.addEventListener('click', async () => {
 
 // ===================== FLASH + SHUTTER SOUND =====================
 function triggerFlash() {
+  if (!flashOn) return;
   flashEl.classList.remove('flash-on');
   void flashEl.offsetWidth; // restart the animation
   flashEl.classList.add('flash-on');
+  pulseDeviceFlash();
+}
+
+async function pulseDeviceFlash() {
+  const track = video.srcObject && video.srcObject.getVideoTracks()[0];
+  if (!track || typeof track.getCapabilities !== 'function' || typeof track.applyConstraints !== 'function') return () => {};
+  try {
+    const capabilities = track.getCapabilities();
+    if (!capabilities.torch) return () => {};
+    await track.applyConstraints({ advanced: [{ torch: true }] });
+    await new Promise((resolve) => setTimeout(resolve, 140));
+    return () => {
+      track.applyConstraints({ advanced: [{ torch: false }] }).catch((err) => console.warn('Could not turn off camera flash:', err));
+    };
+  } catch (err) {
+    console.warn('Device flash is unavailable:', err);
+    return () => {};
+  }
 }
 
 let audioCtx = null;

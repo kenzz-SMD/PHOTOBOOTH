@@ -83,11 +83,25 @@
   <div id="booth-screen" class="hidden">
     <h1 class="brand" data-i18n="booth.title">Timeless Strips</h1>
     <p id="template-label"></p>
-    <div id="video-wrap">
-      <video id="camera" autoplay playsinline muted></video>
-      <canvas id="ar-canvas"></canvas>
-      <div id="countdown"></div>
-      <div id="flash"></div>
+    <div class="camera-workspace">
+      <div id="video-wrap">
+        <video id="camera" autoplay playsinline muted></video>
+        <canvas id="ar-canvas"></canvas>
+        <div id="countdown"></div>
+        <div id="flash"></div>
+        <div class="camera-tools" aria-label="Camera options">
+          <button id="mirror-btn" class="camera-tool is-on" type="button" aria-pressed="true" title="Mirror the preview and photos">↔ Mirror on</button>
+          <button id="flash-btn" class="camera-tool is-on" type="button" aria-pressed="true" title="Flash effect and device flash where supported">⚡ Flash on</button>
+        </div>
+      </div>
+      <aside id="camera-rail" aria-labelledby="camera-rail-title">
+        <div class="camera-rail-heading">
+          <h2 id="camera-rail-title">Photo moments</h2>
+          <span class="camera-rail-count"><b id="camera-shot-count">0</b>/<span id="camera-shot-total">4</span></span>
+        </div>
+        <p id="camera-shot-progress" class="camera-rail-note" aria-live="polite">Your photos will appear here as you go.</p>
+        <ol id="camera-shots" aria-label="Photos in this strip"></ol>
+      </aside>
     </div>
     <canvas id="canvas" class="hidden"></canvas>
     <canvas id="strip-canvas" class="hidden"></canvas>
