@@ -60,9 +60,9 @@ const countdownEl = $('countdown');
 const flashEl = $('flash');
 const mirrorBtn = $('mirror-btn');
 const flashBtn = $('flash-btn');
-const cameraShotList = $('camera-shots');
 const cameraShotCount = $('camera-shot-count');
 const cameraShotTotal = $('camera-shot-total');
+const cameraShots = $('camera-shots');
 const cameraShotProgress = $('camera-shot-progress');
 // pop animation every time the countdown number changes
 new MutationObserver(() => {
@@ -98,69 +98,9 @@ const galleryEl = $('gallery');
 
 
 let cameraStarted = false;
-let mirrorOn = true;
-let flashOn = true;
-let cameraShotCards = [];
-
-function updateCameraTools() {
-  video.classList.toggle('is-unmirrored', !mirrorOn);
-  arCanvas.classList.toggle('is-unmirrored', !mirrorOn);
-  mirrorBtn.classList.toggle('is-on', mirrorOn);
-  mirrorBtn.setAttribute('aria-pressed', String(mirrorOn));
-  mirrorBtn.textContent = '↔ Mirror ' + (mirrorOn ? 'on' : 'off');
-  flashBtn.classList.toggle('is-on', flashOn);
-  flashBtn.setAttribute('aria-pressed', String(flashOn));
-  flashBtn.textContent = '⚡ Flash ' + (flashOn ? 'on' : 'off');
-}
-
-function prepareShotTray() {
-  const total = currentSlots().length;
-  cameraShotCards = [];
-  cameraShotCount.textContent = '0';
-  cameraShotTotal.textContent = String(total);
-  cameraShotProgress.textContent = 'Your photos will appear here as you go.';
-  cameraShotList.replaceChildren();
-
-  for (let i = 0; i < total; i++) {
-    const card = document.createElement('li');
-    card.className = 'camera-shot';
-    const thumb = document.createElement('div');
-    thumb.className = 'camera-shot-thumb';
-    const placeholder = document.createElement('span');
-    placeholder.className = 'camera-shot-placeholder';
-    placeholder.textContent = '✦';
-    const image = document.createElement('img');
-    image.alt = 'Photo ' + (i + 1);
-    image.className = 'hidden';
-    const number = document.createElement('span');
-    number.className = 'camera-shot-number';
-    number.textContent = String(i + 1).padStart(2, '0');
-    const status = document.createElement('span');
-    status.className = 'camera-shot-status';
-    status.textContent = 'Waiting';
-    thumb.append(placeholder, image);
-    card.append(thumb, number, status);
-    cameraShotList.appendChild(card);
-    cameraShotCards.push({ card, placeholder, image, status });
-  }
-}
-
-function markActiveShot(shotNumber) {
-  cameraShotCards.forEach((shot, i) => shot.card.classList.toggle('active', i === shotNumber - 1));
-  cameraShotProgress.textContent = 'Get ready for photo ' + shotNumber + ' of ' + cameraShotCards.length + '!';
-}
-
-mirrorBtn.addEventListener('click', () => {
-  mirrorOn = !mirrorOn;
-  updateCameraTools();
-});
-
-flashBtn.addEventListener('click', () => {
-  flashOn = !flashOn;
-  updateCameraTools();
-});
-
-updateCameraTools();
+let mirrorEnabled = true;
+let flashEnabled = true;
+let currentShotCount = 0;
 
 function toast(msg) {
   const t = $('app-toast');
@@ -198,6 +138,103 @@ startBtn.addEventListener('click', () => {
   adminLink.classList.add('hidden');
   welcomeScreen.classList.add('hidden');
   templateScreen.classList.remove('hidden');
+});
+
+function applyCameraMirror() {
+  const transform = mirrorEnabled ? 'scaleX(-1)' : 'scaleX(1)';
+  if (video) video.style.transform = transform;
+  if (arCanvas) arCanvas.style.transform = transform;
+}
+
+function syncCameraTools() {
+  if (!mirrorBtn || !flashBtn) return;
+  mirrorBtn.classList.toggle('is-on', mirrorEnabled);
+  mirrorBtn.setAttribute('aria-pressed', String(mirrorEnabled));
+  mirrorBtn.textContent = mirrorEnabled ? '↔ Mirror on' : '↔ Mirror off';
+
+  flashBtn.classList.toggle('is-on', flashEnabled);
+  flashBtn.setAttribute('aria-pressed', String(flashEnabled));
+  flashBtn.textContent = flashEnabled ? '⚡ Flash on' : '⚡ Flash off';
+}
+
+function resetShotRail() {
+  const total = currentSlots().length;
+  currentShotCount = 0;
+  if (cameraShotCount) cameraShotCount.textContent = String(currentShotCount);
+  if (cameraShotTotal) cameraShotTotal.textContent = String(total);
+  if (cameraShotProgress) cameraShotProgress.textContent = 'Your photos will appear here as you go.';
+  if (!cameraShots) return;
+  cameraShots.innerHTML = '';
+  for (let i = 0; i < total; i += 1) {
+    const li = document.createElement('li');
+    li.className = 'camera-shot';
+    if (i === 0) li.classList.add('active');
+    li.innerHTML = `
+      <div class="camera-shot-thumb">
+        <span class="camera-shot-placeholder">📷</span>
+      </div>
+      <div class="camera-shot-meta">
+        <span class="camera-shot-number">Shot ${i + 1}</span>
+        <span class="camera-shot-status">Waiting…</span>
+      </div>
+    `;
+    cameraShots.appendChild(li);
+  }
+}
+
+function updateShotRail() {
+  if (!cameraShots) return;
+  const shots = [...cameraShots.children];
+  shots.forEach((li, index) => {
+    const isCaptured = index < currentShotCount;
+    li.classList.toggle('captured', isCaptured);
+    li.classList.toggle('active', index === currentShotCount && !isCaptured);
+    const thumb = li.querySelector('.camera-shot-thumb');
+    const status = li.querySelector('.camera-shot-status');
+    const img = li.querySelector('img');
+    const shot = li._shotData;
+    if (shot && shot.dataUrl) {
+      if (!img) {
+        const newImg = document.createElement('img');
+        newImg.src = shot.dataUrl;
+        newImg.alt = 'Captured shot ' + (index + 1);
+        thumb.innerHTML = '';
+        thumb.appendChild(newImg);
+      } else {
+        img.src = shot.dataUrl;
+      }
+      li.classList.add('latest');
+      if (status) status.textContent = 'Saved';
+    } else {
+      if (img) img.remove();
+      if (thumb && !thumb.querySelector('.camera-shot-placeholder')) {
+        thumb.innerHTML = '<span class="camera-shot-placeholder">📷</span>';
+      }
+      if (status) status.textContent = index === currentShotCount ? 'Ready' : 'Waiting…';
+    }
+  });
+  if (cameraShotCount) cameraShotCount.textContent = String(currentShotCount);
+  if (cameraShotProgress) {
+    cameraShotProgress.textContent = currentShotCount > 0
+      ? currentShotCount === currentSlots().length
+        ? 'All moments captured — time to edit.'
+        : 'Your photos will appear here as you go.'
+      : 'Your photos will appear here as you go.';
+  }
+}
+
+mirrorBtn?.addEventListener('click', () => {
+  mirrorEnabled = !mirrorEnabled;
+  applyCameraMirror();
+  syncCameraTools();
+});
+
+flashBtn?.addEventListener('click', () => {
+  flashEnabled = !flashEnabled;
+  syncCameraTools();
+  if (!flashEnabled) {
+    flashEl.classList.remove('flash-on');
+  }
 });
 
 // ===================== TEMPLATE PICKER =====================
@@ -291,7 +328,6 @@ templateConfirm.addEventListener('click', () => {
   stickers = [];
   currentStripId = null;
 
-  prepareShotTray();
   startCamera();
 });
 
@@ -304,11 +340,14 @@ changeTemplateBtn.addEventListener('click', () => {
 // ===================== 2. CAMERA =====================
 function startCamera() {
   if (cameraStarted) return;
+  syncCameraTools();
+  applyCameraMirror();
 
   navigator.mediaDevices.getUserMedia({ video: true })
     .then((stream) => {
       video.srcObject = stream;
       cameraStarted = true;
+      applyCameraMirror();
       startAr();
     })
     .catch((err) => {
@@ -322,45 +361,32 @@ stripBtn.addEventListener('click', () => {
   stripBtn.disabled = true;
   changeTemplateBtn.disabled = true;
   galleryBtn.disabled = true;
-  prepareShotTray();
+  resetShotRail();
   captureStrip(1, []);
 });
 
 function captureStrip(shotNumber, photos) {
-  markActiveShot(shotNumber);
-  runCountdown(async () => {
+  runCountdown(() => {
     playShutter();
-    const stopDeviceFlash = await pulseDeviceFlash();
     triggerFlash();
-    try {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.save();
-      if (mirrorOn) {
-        ctx.translate(canvas.width, 0);
-        ctx.scale(-1, 1);
-      }
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      if (arFilter !== 'none') {
-        drawArFaces(ctx, arFaces, arFilter);   // same smoothed faces as the live preview
-      }
-      ctx.restore();
-      photos.push(canvas.toDataURL('image/png'));
-    } finally {
-      stopDeviceFlash();
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    if (arFilter !== 'none') {
+      drawArFaces(ctx, arFaces, arFilter);   // same smoothed faces as the live preview
     }
-    const shot = cameraShotCards[shotNumber - 1];
-    shot.image.src = photos[photos.length - 1];
-    shot.image.classList.remove('hidden');
-    shot.placeholder.classList.add('hidden');
-    shot.status.textContent = 'Captured';
-    shot.card.classList.remove('active');
-    shot.card.classList.add('captured', 'latest');
-    cameraShotCount.textContent = String(photos.length);
-    cameraShotProgress.textContent = photos.length === cameraShotCards.length
-      ? 'Lovely! All ' + photos.length + ' photos are ready.'
-      : 'Photo ' + photos.length + ' of ' + cameraShotCards.length + ' captured!';
+    const shotData = canvas.toDataURL('image/png');
+    photos.push(shotData);
+
+    const slotIndex = shotNumber - 1;
+    const listItem = cameraShots?.children[slotIndex];
+    if (listItem) {
+      listItem._shotData = { dataUrl: shotData };
+      currentShotCount = shotNumber;
+      listItem.classList.add('latest');
+      updateShotRail();
+    }
 
     if (shotNumber < currentSlots().length) {
       countdownEl.textContent = 'Next shot...';
@@ -1446,28 +1472,22 @@ galleryBtn.addEventListener('click', async () => {
 
 // ===================== FLASH + SHUTTER SOUND =====================
 function triggerFlash() {
-  if (!flashOn) return;
+  if (!flashEnabled) return;
   flashEl.classList.remove('flash-on');
   void flashEl.offsetWidth; // restart the animation
   flashEl.classList.add('flash-on');
-  pulseDeviceFlash();
-}
 
-async function pulseDeviceFlash() {
-  const track = video.srcObject && video.srcObject.getVideoTracks()[0];
-  if (!track || typeof track.getCapabilities !== 'function' || typeof track.applyConstraints !== 'function') return () => {};
-  try {
-    const capabilities = track.getCapabilities();
-    if (!capabilities.torch) return () => {};
-    await track.applyConstraints({ advanced: [{ torch: true }] });
-    await new Promise((resolve) => setTimeout(resolve, 140));
-    return () => {
-      track.applyConstraints({ advanced: [{ torch: false }] }).catch((err) => console.warn('Could not turn off camera flash:', err));
-    };
-  } catch (err) {
-    console.warn('Device flash is unavailable:', err);
-    return () => {};
-  }
+  const stream = video && video.srcObject;
+  const track = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+  if (!track || !track.getCapabilities || !track.applyConstraints) return;
+
+  const torchCap = track.getCapabilities && track.getCapabilities().torch;
+  if (!torchCap) return;
+
+  track.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {});
+  setTimeout(() => {
+    track.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
+  }, 180);
 }
 
 let audioCtx = null;

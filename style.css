@@ -2,9 +2,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Lobster&display=swap');
 
 body {
+  margin: 0;
   text-align: center;
-  background:beige;
-  color:#222;
+  background: linear-gradient(180deg, #fffaf7 0%, #fff4ef 100%);
+  color: #222;
   font-family: sans-serif;
 }
 
@@ -15,54 +16,140 @@ body {
 /* Welcome screen */
 #welcome-screen {
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: min(88vw, 640px);
-  box-sizing: border-box;
-  background: rgba(255, 255, 255, 0.62);
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 216, 184, 0.95), transparent 26%),
+    radial-gradient(circle at 80% 18%, rgba(214, 214, 255, 0.9), transparent 24%),
+    radial-gradient(circle at 50% 90%, rgba(255, 206, 230, 0.9), transparent 28%),
+    linear-gradient(135deg, rgba(255, 240, 247, 0.96), rgba(236, 232, 255, 0.94), rgba(255, 247, 221, 0.96));
+  overflow: hidden;
+}
+
+#welcome-screen::before,
+#welcome-screen::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(8px);
+  opacity: 0.72;
+  animation: floatBlob 16s ease-in-out infinite alternate;
+}
+
+#welcome-screen::before {
+  width: 360px;
+  height: 360px;
+  left: 10%;
+  top: 10%;
+  background: rgba(255, 179, 198, 0.32);
+}
+
+#welcome-screen::after {
+  width: 300px;
+  height: 300px;
+  right: 12%;
+  bottom: 12%;
+  background: rgba(172, 191, 255, 0.32);
+  animation-delay: 1s;
+}
+
+.welcome-pills {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.welcome-pills span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.58rem 1rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(109, 82, 91, 0.12);
+  box-shadow: 0 10px 30px rgba(132, 94, 150, 0.08);
+  color: #553f60;
+  font-size: 0.82rem;
+  font-weight: 700;
   backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 10px 40px rgba(180, 80, 0, 0.25);
-  padding: 40px 30px;
-  border-radius: 16px;
-  text-align: center;
 }
 
 #welcome-screen h1 {
+  position: relative;
+  z-index: 1;
+  margin: 0;
   font-family: 'Lobster', cursive;
-  font-size: clamp(42px, 10vw, 68px);
+  font-size: clamp(42px, 10vw, 72px);
   font-weight: bold;
-  color: #222;
-  text-shadow: 4px 4px 0px #aaa, 8px 8px 0px #ddd;
-  margin: 0 0 20px;
+  letter-spacing: 0.06em;
+  color: #2d1d39;
+  text-shadow: 0 10px 32px rgba(255, 255, 255, 0.7);
+  animation: fadeUp 0.9s ease both;
 }
 
 #welcome-screen p {
+  position: relative;
+  z-index: 1;
+  margin: 0;
   font-family: 'Lobster', cursive;
-  font-size: 28px;
-  color: #444;
-  text-shadow: 2px 2px 0px #ccc;
+  font-size: clamp(22px, 4vw, 30px);
+  color: rgba(40, 26, 58, 0.82);
+  text-shadow: 2px 2px 0px rgba(255, 255, 255, 0.4);
+  animation: fadeUp 1.05s ease both;
 }
 
 #welcome-screen button {
-  padding: 12px 30px;
-  font-size: 20px;
-  background: #ff6b81;
+  position: relative;
+  z-index: 1;
+  padding: 1rem 2.6rem;
+  font-size: 1.12rem;
+  background: linear-gradient(135deg, #ff7aa1, #c38dff 52%, #ffd87b);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 999px;
   cursor: pointer;
-  margin-top: 20px;
+  margin-top: 0.5rem;
   touch-action: manipulation;
   font-family: 'Lobster', cursive;
   font-weight: bold;
-  text-shadow: 2px 2px 0px #333;
+  box-shadow: 0 18px 40px rgba(160, 132, 215, 0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  animation: pulseButton 2.6s ease-in-out infinite;
 }
 
 #welcome-screen button:hover {
-  background: #ff4f68;
+  transform: translateY(-2px) scale(1.02);
+  filter: brightness(1.04);
+  box-shadow: 0 22px 44px rgba(160, 132, 215, 0.42);
+}
+
+@keyframes floatBlob {
+  0%   { transform: translate3d(0, 0, 0) scale(0.96); }
+  100% { transform: translate3d(22px, -18px, 0) scale(1.08); }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulseButton {
+  0%, 100% { box-shadow: 0 18px 40px rgba(160, 132, 215, 0.35); }
+  50% { box-shadow: 0 18px 40px rgba(160, 132, 215, 0.5), 0 0 0 12px rgba(196, 138, 255, 0.12); }
 }
 
 /* Video + countdown */
