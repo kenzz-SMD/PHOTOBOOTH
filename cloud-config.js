@@ -5,6 +5,7 @@
 window.CLOUD_CONFIG = {
   url: 'https://dlpqoblxhkjvoybbousq.supabase.co', // e.g. 'https://abcd1234.supabase.co'
   key: 'sb_publishable_0LFjyV0WXohLqDPCIw31Nw_6Ntqljyw', // anon public key, e.g. 'eyJhbGciOi...'
-  lib: '20041231s', // library code, e.g. 'my-booth-4f8a2c91'
+  lib: 'cebu-booth-k7x2p9qm4d', // library code, e.g. 'my-booth-4f8a2c91'
+  trackDevices: true, // true = each device announces itself so the admin sees "Active Devices"
   syncStrips: false   // false = users' finished photo strips stay private on their own device
 };

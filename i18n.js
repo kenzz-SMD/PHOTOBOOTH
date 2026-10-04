@@ -18,9 +18,9 @@ const I18N = (() => {
 
   const T = {
     en: {
+      'load.1': 'Developing your photos…', 'load.2': 'Sprinkling some sparkle…', 'load.3': 'Almost ready…', 'load.templates': 'Loading templates…',
       'welcome.tag': 'Get ready to strike a pose.', 'welcome.start': 'Start',
       'tmpl.title': 'Choose your template', 'tmpl.continue': 'Continue',
-      'cat.all': 'All', 'cat.romantic': 'Romantic', 'cat.vintage': 'Vintage', 'cat.fun': 'Fun & Playful', 'cat.seasonal': 'Seasonal', 'cat.elegant': 'Elegant', 'cat.nature': 'Nature', 'cat.party': 'Party & Celebration', 'cat.corporate': 'Corporate / Branding', 'cat.travel': 'Travel & Adventure', 'cat.custom': 'Custom / User-Defined', 'cat.empty': 'No templates in this category yet.',
       'booth.title': 'Timeless Strips', 'btn.capture': '🎞️ Capture Strip ({n} Photos)',
       'btn.change': '🖼️ Change Template', 'btn.gallery': '🗂️ Gallery',
       'edit.title': 'Edit your strip', 'edit.reset': '↩️ Reset', 'edit.autocrop': '🧠 Auto-crop faces',
@@ -42,9 +42,9 @@ const I18N = (() => {
       'get.err': 'Sorry, this strip could not be loaded.', 'get.again': 'Try again', 'get.loading': 'Loading your strip…'
     },
     fil: {
+      'load.1': 'Dine-develop ang mga larawan…', 'load.2': 'Nagwiwisik ng kislap…', 'load.3': 'Malapit na…', 'load.templates': 'Nilo-load ang mga template…',
       'welcome.tag': 'Humanda na sa pag-pose.', 'welcome.start': 'Simulan',
       'tmpl.title': 'Pumili ng template', 'tmpl.continue': 'Magpatuloy',
-      'cat.all': 'Lahat', 'cat.romantic': 'Romantiko', 'cat.vintage': 'Vintage', 'cat.fun': 'Masaya at Malikot', 'cat.seasonal': 'Pang-panahon', 'cat.elegant': 'Elegante', 'cat.nature': 'Kalikasan', 'cat.party': 'Party at Selebrasyon', 'cat.corporate': 'Korporatibo / Branding', 'cat.travel': 'Paglalakbay at Pakikipagsapalaran', 'cat.custom': 'Custom / Sariling-gawa', 'cat.empty': 'Wala pang template sa kategoryang ito.',
       'booth.title': 'Timeless Strips', 'btn.capture': '🎞️ Kunan ang Strip ({n} Larawan)',
       'btn.change': '🖼️ Palitan ang Template', 'btn.gallery': '🗂️ Gallery',
       'edit.title': 'I-edit ang strip', 'edit.reset': '↩️ I-reset', 'edit.autocrop': '🧠 Auto-crop ng mukha',
@@ -66,9 +66,9 @@ const I18N = (() => {
       'get.err': 'Paumanhin, hindi ma-load ang strip na ito.', 'get.again': 'Subukan ulit', 'get.loading': 'Nilo-load ang iyong strip…'
     },
     es: {
+      'load.1': 'Revelando tus fotos…', 'load.2': 'Añadiendo un poco de brillo…', 'load.3': 'Casi listo…', 'load.templates': 'Cargando plantillas…',
       'welcome.tag': 'Prepárate para posar.', 'welcome.start': 'Empezar',
       'tmpl.title': 'Elige tu plantilla', 'tmpl.continue': 'Continuar',
-      'cat.all': 'Todas', 'cat.romantic': 'Romántico', 'cat.vintage': 'Vintage', 'cat.fun': 'Divertido', 'cat.seasonal': 'De temporada', 'cat.elegant': 'Elegante', 'cat.nature': 'Naturaleza', 'cat.party': 'Fiesta y celebración', 'cat.corporate': 'Corporativo / Marca', 'cat.travel': 'Viajes y aventura', 'cat.custom': 'Personalizado', 'cat.empty': 'Aún no hay plantillas en esta categoría.',
       'booth.title': 'Timeless Strips', 'btn.capture': '🎞️ Capturar tira ({n} fotos)',
       'btn.change': '🖼️ Cambiar plantilla', 'btn.gallery': '🗂️ Galería',
       'edit.title': 'Edita tu tira', 'edit.reset': '↩️ Restablecer', 'edit.autocrop': '🧠 Recorte de rostros',
@@ -90,9 +90,9 @@ const I18N = (() => {
       'get.err': 'Lo sentimos, no se pudo cargar esta tira.', 'get.again': 'Reintentar', 'get.loading': 'Cargando tu tira…'
     },
     ja: {
+      'load.1': '写真を現像中…', 'load.2': 'キラキラを追加中…', 'load.3': 'もうすぐ完成…', 'load.templates': 'テンプレートを読み込み中…',
       'welcome.tag': 'ポーズを決めよう。', 'welcome.start': 'スタート',
       'tmpl.title': 'テンプレートを選ぶ', 'tmpl.continue': '次へ',
-      'cat.all': 'すべて', 'cat.romantic': 'ロマンチック', 'cat.vintage': 'ヴィンテージ', 'cat.fun': 'ファン＆ポップ', 'cat.seasonal': '季節', 'cat.elegant': 'エレガント', 'cat.nature': '自然', 'cat.party': 'パーティー＆お祝い', 'cat.corporate': '法人・ブランド', 'cat.travel': '旅とアドベンチャー', 'cat.custom': 'カスタム', 'cat.empty': 'このカテゴリにはまだテンプレートがありません。',
       'booth.title': 'Timeless Strips', 'btn.capture': '🎞️ ストリップを撮影（{n}枚）',
       'btn.change': '🖼️ テンプレート変更', 'btn.gallery': '🗂️ ギャラリー',
       'edit.title': 'ストリップを編集', 'edit.reset': '↩️ リセット', 'edit.autocrop': '🧠 顔を自動トリミング',
