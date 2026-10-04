@@ -58,6 +58,11 @@ const galleryBtn = $('gallery-btn');
 const canvas = $('canvas');
 const countdownEl = $('countdown');
 const flashEl = $('flash');
+// pop animation every time the countdown number changes
+new MutationObserver(() => {
+  countdownEl.classList.remove('tick');
+  if (countdownEl.textContent) { void countdownEl.offsetWidth; countdownEl.classList.add('tick'); }
+}).observe(countdownEl, { childList: true, characterData: true, subtree: true });
 const bgAnim = $('bg-anim');
 const arCanvas = $('ar-canvas');
 const arBar = $('ar-bar');
@@ -79,6 +84,7 @@ const resultEmpty = $('result-empty');
 const printBtn = $('print-btn');
 const downloadBtn = $('download-btn');
 const shareBtn = $('share-btn');
+const qrBtn = $('qr-btn');
 const editAgainBtn = $('edit-again-btn');
 const newStripBtn = $('new-strip-btn');
 const homeBtn = $('home-btn');
@@ -203,11 +209,10 @@ if (STORE_OK) {
 templateConfirm.addEventListener('click', () => {
   if (!selectedTemplate) return;
 
-  bgAnim.classList.add('off'); // animated background: welcome + template screens only
   templateScreen.classList.add('hidden');
   boothScreen.classList.remove('hidden');
   templateLabel.textContent = 'Template: ' + selectedTemplate.name;
-  stripBtn.textContent = '🎞️ Capture Strip (' + currentSlots().length + ' Photos)';
+  stripBtn.textContent = I18N.t('btn.capture', { n: currentSlots().length });
 
   // a different template means the old edit no longer fits
   editState = null;
@@ -1109,7 +1114,7 @@ function showStrip(blob, isPast) {
   const has = !!blob;
   finalImg.classList.toggle('hidden', !has);
   resultEmpty.classList.toggle('hidden', has);
-  [printBtn, downloadBtn, shareBtn].forEach((b) => { b.disabled = !has; });
+  [printBtn, downloadBtn, shareBtn, qrBtn].forEach((b) => { b.disabled = !has; });
   // "Edit Again" only for the strip that was just made in this session
   editAgainBtn.classList.toggle('hidden', !(has && !isPast && editState));
 
@@ -1256,6 +1261,47 @@ downloadBtn.addEventListener('click', () => {
   if (currentBlob) downloadBlob(currentBlob);
 });
 
+// ---- QR / phone download link ----
+let qrCache = { blob: null, link: '' };
+async function openQr() {
+  if (!currentBlob) return;
+  const dlg = $('qr-dlg'), box = $('qr-box'), msg = $('qr-msg'), share = $('qr-share');
+  const say = (key, err) => { msg.className = err ? 'err' : ''; msg.textContent = key ? I18N.t(key) : ''; };
+  share.classList.add('hidden'); box.classList.remove('ready'); say('qr.making');
+  box.innerHTML = '<div class="qr-spin"></div>';
+  if (!dlg.open) dlg.showModal();
+  try {
+    if (/^(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(location.hostname) || location.protocol === 'file:') throw new Error('local');
+    if (qrCache.blob !== currentBlob) {
+      const img = await CloudSync.publishStrip(currentBlob);
+      const page = new URL('get.html', location.href);
+      page.searchParams.set('i', img);
+      page.searchParams.set('l', I18N.lang);
+      qrCache = { blob: currentBlob, link: page.href };
+    }
+    const canvas = QR.toCanvas(qrCache.link, { scale: 8, margin: 2, level: 'M' });
+    box.innerHTML = '<div class="qr-card"><span class="qr-scan"></span></div>' +
+      '<i class="qr-corner tl"></i><i class="qr-corner tr"></i><i class="qr-corner bl"></i><i class="qr-corner br"></i>';
+    box.firstChild.appendChild(canvas);
+    box.classList.add('ready');
+    say('');
+    ShareUI.render($('qr-social'), qrCache.link, I18N.t('get.title'));
+    share.classList.remove('hidden');
+  } catch (e) {
+    box.innerHTML = '';
+    const k = { nocloud: 'qr.nocloud', offline: 'qr.offline', local: 'qr.local' }[e.message] || 'qr.fail';
+    say(k, true);
+  }
+}
+qrBtn.addEventListener('click', openQr);
+$('qr-close').addEventListener('click', () => $('qr-dlg').close());
+$('qr-dlg').addEventListener('click', (e) => { if (e.target === $('qr-dlg')) $('qr-dlg').close(); });
+// keep the capture-button label in the chosen language
+window.addEventListener('langchange', () => {
+  if (selectedTemplate) stripBtn.textContent = I18N.t('btn.capture', { n: currentSlots().length });
+  if ($('qr-dlg').open && qrCache.link) ShareUI.render($('qr-social'), qrCache.link, I18N.t('get.title'));
+});
+
 shareBtn.addEventListener('click', async () => {
   if (!currentBlob) return;
   const file = new File([currentBlob], 'timeless-strip.png', { type: 'image/png' });
@@ -1379,6 +1425,38 @@ function playShutter() {
   }
 })();
 
+
+(function createFloaters() {
+  const box = $('bg-sparkles');
+  if (!box) return;
+  const ITEMS = ['💗', '💖', '🎈', '✨', '💕', '🎀', '🫧', '🩷'];
+  const COUNT = 16;
+  for (let i = 0; i < COUNT; i++) {
+    const el = document.createElement('span');
+    el.className = 'floater';
+    const inner = document.createElement('i');
+    inner.textContent = ITEMS[i % ITEMS.length];
+    el.appendChild(inner);
+    const dur = 18 + Math.random() * 16;                 // slow: 18 - 34 s per trip
+    el.style.left = (4 + Math.random() * 92) + '%';
+    el.style.fontSize = (20 + Math.random() * 26) + 'px';
+    el.style.setProperty('--dur', dur + 's');
+    el.style.setProperty('--delay', (-Math.random() * dur) + 's');
+    el.style.setProperty('--sway', (4 + Math.random() * 4) + 's');
+    el.style.setProperty('--r0', (-12 + Math.random() * 8) + 'deg');
+    el.style.setProperty('--r1', (6 + Math.random() * 10) + 'deg');
+    box.appendChild(el);
+  }
+})();
+
+// camera icon on the left of the booth title
+(function brandIcon() {
+  const h = document.querySelector('#booth-screen h1');
+  if (!h) return;
+  const img = document.createElement('img');
+  img.className = 'brand-ico'; img.alt = '';
+  if (typeof ICONS !== 'undefined' && ICONS.camera) { img.src = ICONS.camera; h.insertBefore(img, h.firstChild); }
+})();
 
 // ===================== START =====================
 buildStickerPalette();

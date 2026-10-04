@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Your photo strip</title>
+  <meta name="robots" content="noindex">
+  <style>
+    :root { --ink: #4a3b34; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; color: var(--ink); text-align: center;
+      min-height: 100vh; min-height: 100dvh; overflow-x: hidden;
+      padding: max(20px, env(safe-area-inset-top)) 16px max(28px, env(safe-area-inset-bottom));
+      background: #ffe9dc; position: relative;
+    }
+    body::before {
+      content: ''; position: fixed; inset: -40%; z-index: -1;
+      background: conic-gradient(from 0deg, #ffe3cf, #ffd1dc, #e5d4ff, #cdf5ea, #ffe3cf);
+      animation: spin 40s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+    .confetti i { position: absolute; top: -20px; width: 10px; height: 16px; border-radius: 3px; opacity: 0;
+      animation: fall linear infinite; }
+    @keyframes fall { 0% { transform: translateY(0) rotate(0); opacity: 0; } 8% { opacity: 1; }
+      100% { transform: translateY(110vh) rotate(720deg); opacity: .9; } }
+    main { position: relative; z-index: 1; max-width: 520px; margin: 0 auto; }
+    h1 { margin: 12px 0 6px; font-size: clamp(26px, 7vw, 36px);
+      background: linear-gradient(90deg, #ff6b81, #ff9a56, #a855f7); -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent; animation: pop .7s cubic-bezier(.3, 1.6, .5, 1) both; }
+    .sub { margin: 0 0 18px; opacity: .8; animation: pop .7s .1s cubic-bezier(.3, 1.6, .5, 1) both; }
+    @keyframes pop { from { opacity: 0; transform: translateY(16px) scale(.9); } }
+    .frame { position: relative; display: inline-block; padding: 18px 12px 0; }
+    .frame::before { content: ''; position: absolute; top: 2px; left: 50%; width: 92px; height: 26px; z-index: 2;
+      transform: translateX(-50%) rotate(-3deg); box-shadow: 0 2px 6px rgba(0,0,0,.15);
+      background: repeating-linear-gradient(45deg, rgba(255,179,198,.9) 0 8px, rgba(255,224,232,.9) 8px 16px); }
+    #strip { display: block; width: min(280px, 72vw); height: auto; background: #fff; padding: 10px 10px 30px; border-radius: 6px;
+      box-shadow: 0 16px 36px rgba(90, 50, 30, .3); transform-origin: 50% 0;
+      animation: drop 1s cubic-bezier(.2, 1.4, .4, 1) both, sway 6s 1s ease-in-out infinite; }
+    @keyframes drop { from { opacity: 0; transform: translateY(-60px) rotate(-8deg); } to { transform: rotate(-1.5deg); } }
+    @keyframes sway { 0%, 100% { transform: rotate(-1.5deg); } 50% { transform: rotate(1.2deg); } }
+    .btn { position: relative; overflow: hidden; display: inline-block; margin-top: 22px; padding: 15px 34px; border: 0; border-radius: 999px;
+      font: inherit; font-size: 18px; font-weight: 700; color: #fff; cursor: pointer; text-decoration: none;
+      background: linear-gradient(135deg, #34d399, #10b981);
+      box-shadow: 0 5px 0 rgba(0,0,0,.16), 0 12px 22px rgba(16,185,129,.4);
+      transition: transform .15s cubic-bezier(.3, 1.6, .5, 1); animation: pop .7s .3s cubic-bezier(.3, 1.6, .5, 1) both; }
+    .btn::after { content: ''; position: absolute; top: 0; left: -80%; width: 50%; height: 100%; transform: skewX(-20deg);
+      background: linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent); animation: shine 2.8s 1.2s ease-in-out infinite; }
+    @keyframes shine { 60%, 100% { left: 130%; } }
+    .btn:active { transform: translateY(3px) scale(.97); }
+    .hint { font-size: 12.5px; opacity: .7; margin: 12px 0 0; }
+    h2 { font-size: 16px; margin: 30px 0 12px; }
+    #msg { min-height: 20px; font-weight: 600; }
+    #msg.err { color: #c2415f; }
+    .hidden { display: none !important; }
+    /* social icons */
+    .social-row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+    .soc { --c: #888; position: relative; width: 48px; height: 48px; display: grid; place-items: center; border: 0; border-radius: 50%;
+      color: #fff; background: var(--c); cursor: pointer; text-decoration: none; padding: 0;
+      box-shadow: 0 5px 12px rgba(0,0,0,.2);
+      transition: transform .22s cubic-bezier(.3, 1.8, .5, 1), box-shadow .22s, filter .2s;
+      animation: socIn .5s cubic-bezier(.3, 1.6, .5, 1) calc(var(--i, 0) * 70ms + .4s) backwards; -webkit-tap-highlight-color: transparent; }
+    .soc svg { width: 24px; height: 24px; transition: transform .25s cubic-bezier(.3, 1.8, .5, 1); }
+    .soc:hover, .soc:focus-visible { transform: translateY(-6px) scale(1.14); box-shadow: 0 12px 20px rgba(0,0,0,.28), 0 0 0 4px rgba(255,255,255,.7); filter: brightness(1.08); outline: none; }
+    .soc:hover svg { transform: rotate(-10deg) scale(1.12); }
+    .soc:active { transform: scale(.9); }
+    @keyframes socIn { from { opacity: 0; transform: translateY(18px) scale(.5); } }
+    .soc.copied::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%);
+      background: #2b2118; color: #fff; font-size: 12px; white-space: nowrap; padding: 5px 10px; border-radius: 999px; }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } .confetti { display: none; } }
+  </style>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body>
+  <div class="confetti" aria-hidden="true"></div>
+  <main>
+    <h1 data-i18n="get.title">Your photo strip is ready!</h1>
+    <p class="sub" data-i18n="get.sub">Save it to your phone and share the fun.</p>
+    <p id="msg" data-i18n="get.loading">Loading your strip…</p>
+    <div id="ok" class="hidden">
+      <div class="frame"><img id="strip" alt="Your photo strip"></div><br>
+      <button id="save" class="btn" data-i18n="get.save">💾 Save to phone</button>
+      <p class="hint" data-i18n="get.hint">If saving doesn’t start, press and hold the picture.</p>
+      <h2 data-i18n="get.share">Share with friends</h2>
+      <div id="social" class="social-row"></div>
+    </div>
+  </main>
+
+  <script src="i18n.js"></script>
+  <script src="share-ui.js"></script>
+  <script>
+    (function () {
+      var $ = function (id) { return document.getElementById(id); };
+      // confetti
+      var c = document.querySelector('.confetti'), cols = ['#ff6b81', '#ff9a56', '#a855f7', '#34d399', '#60a5fa', '#fbbf24'];
+      for (var i = 0; i < 26; i++) {
+        var p = document.createElement('i');
+        p.style.left = Math.random() * 100 + '%'; p.style.background = cols[i % cols.length];
+        p.style.animationDuration = 6 + Math.random() * 6 + 's'; p.style.animationDelay = Math.random() * 6 + 's';
+        c.appendChild(p);
+      }
+      var params = new URLSearchParams(location.search);
+      var src = params.get('i') || '';
+      var msg = $('msg');
+      // only accept images from a Supabase public storage URL
+      var okSrc = /^https:\/\/[a-z0-9.-]+\/storage\/v1\/object\/public\/[A-Za-z0-9_\-%\/.]+$/i.test(src);
+      if (params.get('l') && typeof I18N !== 'undefined') I18N.set(params.get('l'));
+
+      function fail() { msg.className = 'err'; msg.removeAttribute('data-i18n'); msg.textContent = I18N.t('get.err'); }
+      if (!okSrc) { fail(); return; }
+
+      var img = $('strip');
+      img.onload = function () {
+        msg.classList.add('hidden'); $('ok').classList.remove('hidden');
+        ShareUI.render($('social'), location.href, I18N.t('get.title'));
+      };
+      img.onerror = fail;
+      img.src = src;
+
+      $('save').addEventListener('click', function () {
+        fetch(src).then(function (r) { return r.blob(); }).then(function (b) {
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(b); a.download = 'timeless-strip.png';
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+        }).catch(function () { window.open(src, '_blank'); });
+      });
+      window.addEventListener('langchange', function () {
+        if (!$('ok').classList.contains('hidden')) ShareUI.render($('social'), location.href, I18N.t('get.title'));
+      });
+    })();
+  </script>
+</body>
+</html>

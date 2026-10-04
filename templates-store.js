@@ -449,6 +449,17 @@ const CloudSync = (() => {
 
   return {
     getConfig, enabled,
+    // Upload one strip image and return its public URL (used for the QR / share links)
+    async publishStrip(blob) {
+      if (!enabled()) throw new Error('nocloud');
+      if (!navigator.onLine) throw new Error('offline');
+      const id = 'qr-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+      const res = await fetch(base() + '/storage/v1/object/' + BUCKET + '/' + objPath('strip', id), {
+        method: 'POST', headers: hdr({ 'Content-Type': blob.type || 'image/png' }), body: blob
+      });
+      await check(res, 'Upload');
+      return base() + '/storage/v1/object/public/' + BUCKET + '/' + objPath('strip', id);
+    },
     // ---- admin login (Supabase Auth, email + password) ----
     async login(email, password) {
       saveSess(await authCall('token?grant_type=password', { email, password }));
