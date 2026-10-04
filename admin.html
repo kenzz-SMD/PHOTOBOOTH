@@ -39,9 +39,25 @@
   </header>
 
   <main>
-    <!-- 1. Upload -->
+    <!-- 1. Categories -->
+    <section class="card">
+      <h2>🗂️ Categories <span id="cat-count" class="pill"></span></h2>
+      <p class="muted small">Organize templates into categories. Guests can browse by category in the photobooth.</p>
+      <div id="cat-list"></div>
+      <div class="cat-add-row">
+        <input id="cat-new-emoji" type="text" maxlength="4" placeholder="🎉" aria-label="Emoji for new category">
+        <input id="cat-new-name" type="text" maxlength="30" placeholder="New category name" aria-label="New category name">
+        <button id="cat-add-btn" class="btn">+ Add</button>
+      </div>
+      <button id="cat-restore" class="btn ghost small">↺ Restore default categories</button>
+    </section>
+
+    <!-- 2. Upload -->
     <section class="card">
       <h2>Upload templates</h2>
+      <label class="field" style="max-width:320px">Category for new uploads
+        <select id="upload-cat"></select>
+      </label>
       <div id="dropzone" tabindex="0">
         <p class="dz-title"><b>Drag &amp; drop</b> PNG or JPG templates here</p>
         <p class="muted">or</p>
@@ -59,9 +75,12 @@
       <div id="upload-log"></div>
     </section>
 
-    <!-- 2. Template list -->
+    <!-- 3. Template list -->
     <section class="card">
-      <h2>Templates <span id="count" class="pill"></span></h2>
+      <h2>
+        Templates <span id="count" class="pill"></span>
+        <select id="grid-filter" style="float:right;max-width:220px"></select>
+      </h2>
       <div id="grid"></div>
       <p class="muted small" id="sync-note">
         Uploaded templates are saved in this browser. The photobooth opened in the same browser
@@ -70,46 +89,12 @@
       </p>
     </section>
 
-    <!-- 3. Devices -->
-    <section class="card" id="dev-card">
-      <h2>📱 Devices <span id="dev-pill" class="pill">offline</span></h2>
-      <div class="dev-hero">
-        <div class="dev-count-wrap">
-          <span class="dev-live"><i></i></span>
-          <div>
-            <div class="dev-label">Active Devices</div>
-            <div id="dev-count" class="dev-count">0</div>
-          </div>
-        </div>
-        <div class="dev-stats">
-          <div><b id="dev-peak">–</b><span id="dev-peak-l">Peak at once</span></div>
-          <div><b id="dev-uniq">–</b><span id="dev-uniq-l">Unique devices</span></div>
-          <div><b id="dev-total">–</b><span>Seen in 24 h</span></div>
-        </div>
-      </div>
-
-      <div class="dev-bar">
-        <h3>Activity over time</h3>
-        <div class="dev-range" id="dev-range">
-          <button data-r="24h" class="on">24 h</button><button data-r="7d">7 days</button><button data-r="30d">30 days</button>
-        </div>
-      </div>
-      <div id="dev-chart" class="dev-chart"></div>
-      <p id="dev-chart-note" class="muted small"></p>
-
-      <h3>Device list</h3>
-      <div class="dev-table-wrap">
-        <table id="dev-table">
-          <thead><tr><th>Device</th><th>Browser / OS</th><th>Status</th><th>Last activity</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div class="cloud-actions">
-        <button id="dev-refresh" class="btn ghost small">↻ Refresh</button>
-        <button id="dev-clean" class="btn ghost small">🧹 Delete data older than 90 days</button>
-      </div>
-      <p id="dev-msg" class="muted small"></p>
-    </section>
+    <!-- Devices card is no longer hardcoded here: admin-devices.js builds its own
+         "#dev-card" (with "dv-" prefixed ids) and inserts it right above, so this
+         static block — which used the wrong "dev-" prefix and silently did nothing —
+         has been removed. If you ever see a lifeless duplicate card again, it means
+         admin-devices.js found an element with id="dev-card" already in the page and
+         skipped building its real one; just delete the static block like this again. -->
 
     <!-- 4. Cloud sync -->
     <section class="card" id="cloud-card">

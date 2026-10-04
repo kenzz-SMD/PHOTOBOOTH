@@ -4,7 +4,7 @@
 (function () {
   const $ = (id) => document.getElementById(id);
   const msg = $('login-msg');
-  const unlock = () => { document.body.classList.remove('locked'); if (typeof CloudSync !== 'undefined') CloudSync.sync(); };
+  const unlock = () => { document.body.classList.remove('locked'); window.dispatchEvent(new Event('admin-unlocked')); if (typeof CloudSync !== 'undefined') CloudSync.sync(); };
 
   const card0 = $('login-form');
   // Once the entrance animation is done, drop it so later class changes never replay it
