@@ -1743,6 +1743,42 @@ body:has(#booth-screen:not(.hidden)) .roam-x { display: none; }
   0%, 100% { box-shadow: 0 0 0 3px rgba(255, 143, 171, .75), 0 0 22px 4px rgba(255, 143, 171, .45), 0 8px 16px rgba(0, 0, 0, .18); }
   50%      { box-shadow: 0 0 0 3px rgba(200, 160, 255, .85), 0 0 32px 8px rgba(200, 160, 255, .55), 0 8px 16px rgba(0, 0, 0, .18); }
 }
+
+/* Paid-save badge and cashier/voucher dialog */
+.pay-free-badge {
+  width: fit-content; max-width: 100%; margin: 8px auto 14px; padding: 8px 16px;
+  border: 1px solid rgba(255, 122, 162, .32); border-radius: 999px;
+  background: rgba(255, 255, 255, .78); color: #a5365b; font-weight: 800;
+  box-shadow: 0 6px 18px rgba(160, 70, 110, .12);
+}
+.pay-free-badge.is-free { color: #2d795d; border-color: rgba(65, 170, 125, .28); }
+.pay-free-badge.is-error { color: #a33; border-color: rgba(180, 50, 50, .3); }
+.pay-dialog {
+  width: min(440px, calc(100vw - 28px)); padding: 24px; border: 1px solid rgba(255,255,255,.8);
+  border-radius: 24px; color: #42323d; background: linear-gradient(145deg, #fffaf7, #fff0f5);
+  box-shadow: 0 24px 80px rgba(65, 32, 50, .3);
+}
+.pay-dialog::backdrop { background: rgba(42, 25, 40, .52); backdrop-filter: blur(5px); }
+.pay-dialog h3 { margin: 0 0 8px; font-size: 22px; }
+.pay-dialog > p { line-height: 1.5; }
+.pay-dialog label { display: grid; gap: 6px; margin: 12px 0; font-size: 13px; font-weight: 700; }
+.pay-dialog input, .pay-dialog select {
+  width: 100%; padding: 11px 12px; border: 1px solid #ecd3df; border-radius: 12px;
+  background: #fff; color: inherit; font: inherit;
+}
+.pay-dialog-price { font-weight: 800; color: #a5365b; }
+.pay-qr-guest { display: grid; justify-items: center; gap: 8px; margin: 14px 0; padding: 14px; border: 1px solid rgba(255, 122, 162, .24); border-radius: 18px; background: rgba(255,255,255,.75); text-align: center; }
+.pay-qr-guest img { display: block; width: min(220px, 62vw); max-height: 270px; object-fit: contain; border-radius: 10px; background: white; }
+.pay-qr-label { margin: 0; color: #684658; font-weight: 800; }
+.pay-qr-guest a { color: #a5365b; font-weight: 800; }
+.pay-qr-note { margin: 0; color: #796673; font-size: 12px; }
+.pay-or { text-align: center; color: #87717d; font-size: 13px; }
+.pay-dialog-message { min-height: 20px; color: #a5365b; font-size: 13px; }
+.pay-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+.pay-dialog-actions button { padding: 10px 16px; border: 0; border-radius: 999px; font: inherit; font-weight: 800; cursor: pointer; }
+#pay-dialog-cancel { color: #674a5a; background: #f2e4eb; }
+#pay-dialog-confirm { color: #fff; background: linear-gradient(135deg, #ff8fab, #ff5d7a); }
+#pay-dialog-confirm:disabled { opacity: .55; cursor: wait; }
 #booth-screen #change-template-btn:hover:not(:disabled), #booth-screen #gallery-btn:hover:not(:disabled) {
   box-shadow: 0 9px 0 rgba(0, 0, 0, .22), 0 0 28px 6px rgba(255, 255, 255, .6), 0 16px 26px rgba(0, 0, 0, .22);
 }

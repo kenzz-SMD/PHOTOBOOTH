@@ -153,6 +153,29 @@ const DeviceTracker = (() => {
     return t ? JSON.parse(t) : null;
   }
 
+  async function uploadPaymentQr(file) {
+    if (!configured()) throw new Error('Cloud sync is not set up');
+    if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 3 * 1024 * 1024) {
+      throw new Error('Choose a PNG, JPG, or WebP QR image no larger than 3 MB.');
+    }
+    if (typeof CloudSync !== 'undefined' && CloudSync.adminEmail && !(await CloudSync.restoreSession())) {
+      throw new Error('Admin session expired. Sign in again and retry the QR upload.');
+    }
+    const c = cfg();
+    const path = encodeURIComponent(c.lib) + '/payment/qr.' + file.type.split('/')[1].replace('jpeg', 'jpg');
+    const res = await fetch(base() + '/storage/v1/object/timeless-strips/' + path, {
+      method: 'POST',
+      headers: headers({ 'Content-Type': file.type, 'x-upsert': 'true' }),
+      body: file
+    });
+    if (!res.ok) {
+      let text = '';
+      try { text = (await res.text()).slice(0, 160); } catch (e) {}
+      throw new Error('QR upload failed (' + res.status + ') ' + text);
+    }
+    return base() + '/storage/v1/object/public/timeless-strips/' + path + '?v=' + Date.now();
+  }
+
   function start() {
     if (tracking()) connect();
     setInterval(() => {                                                                      // picks up settings saved later
@@ -168,7 +191,7 @@ const DeviceTracker = (() => {
   if (document.readyState === 'complete') start(); else window.addEventListener('load', start);
 
   return {
-    deviceId, rest, configured, tracking, restart: connect,
+    deviceId, rest, uploadPaymentQr, configured, tracking, restart: connect,
     get live() { return list(); }, get connected() { return connected; }, get connectedAt() { return connectedAt; }, get error() { return lastError; },
     onPresence(cb) { cbs.push(cb); cb(list()); },
     onStatus(cb) { statusCbs.push(cb); cb({ connected, error: lastError }); }

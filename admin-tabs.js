@@ -1,5 +1,5 @@
 // ===================== ADMIN: TABS + OVERVIEW DASHBOARD =====================
-// Organises the admin page into four tabs (Overview, Templates, Categories, Cloud) and adds an
+// Organises the admin page into five tabs (Overview, Templates, Categories, Payments, Cloud) and adds an
 // Overview with live stat tiles + quick actions. Pure layout: it only re-uses the elements that
 // admin.js / admin-devices.js already create, so nothing else needs to change.
 // Load AFTER admin.js and admin-devices.js:   <script src="admin-tabs.js"></script>
@@ -11,6 +11,7 @@
     { id: 'overview',   icon: '📊', label: 'Overview' },
     { id: 'templates',  icon: '🖼️', label: 'Templates',  badge: '#count' },
     { id: 'categories', icon: '🗂️', label: 'Categories', badge: '#cat-count' },
+    { id: 'payments',   icon: '💳', label: 'Payments' },
     { id: 'cloud',      icon: '☁️', label: 'Cloud' }
   ];
   let current = 'overview', started = false;
@@ -21,6 +22,7 @@
     $$(':scope > .card', main).forEach((c) => {
       if (c.dataset.tab) return;
       if (c.id === 'dev-card') c.dataset.tab = 'overview';
+      else if (c.id === 'pay-card') c.dataset.tab = 'payments';
       else if (c.id === 'cloud-card') c.dataset.tab = 'cloud';
       else if ($('#cat-list', c)) c.dataset.tab = 'categories';
       else if ($('#dropzone', c) || $('#grid', c)) c.dataset.tab = 'templates';
@@ -66,6 +68,7 @@
     { id: 'st-templates', icon: '🖼️', label: 'Templates',      from: '#count',      go: 'templates',  tone: 'peach' },
     { id: 'st-cats',      icon: '🗂️', label: 'Categories',     from: '#cat-count',  go: 'categories', tone: 'lilac' },
     { id: 'st-devices',   icon: '📱', label: 'Active devices', from: '#dv-count',   go: 'overview',   tone: 'mint', live: true },
+    { id: 'st-payments',  icon: '💳', label: 'Paid saves',     from: '#pay-state',  go: 'payments',   tone: 'peach', text: true },
     { id: 'st-cloud',     icon: '☁️', label: 'Cloud sync',     from: '#cloud-pill', go: 'cloud',      tone: 'sky', text: true }
   ];
   function buildHero() {

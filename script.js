@@ -97,6 +97,8 @@ const finalImg = $('final-strip');
 const resultEmpty = $('result-empty');
 const printBtn = $('print-btn');
 const downloadBtn = $('download-btn');
+const payFreeBadge = $('pay-free-badge');
+const payDialog = $('pay-dialog');
 const shareBtn = $('share-btn');
 const qrBtn = $('qr-btn');
 const editAgainBtn = $('edit-again-btn');
@@ -685,7 +687,7 @@ async function composeGifStrip() {
 }
 
 gifDownloadBtn.addEventListener('click', () => {
-  if (gifStripBlob) downloadBlob(gifStripBlob, 'timeless-gif-strip-' + Date.now() + '.gif');
+  if (gifStripBlob) saveWithEntitlement('gif', gifStripBlob, 'timeless-gif-strip-' + Date.now() + '.gif');
 });
 
 gifShareBtn.addEventListener('click', async () => {
@@ -698,7 +700,7 @@ gifShareBtn.addEventListener('click', async () => {
       if (err && err.name !== 'AbortError') toast('Could not share the GIF: ' + err.message);
     }
   } else {
-    downloadBlob(gifStripBlob, 'timeless-gif-strip-' + Date.now() + '.gif');
+    saveWithEntitlement('gif', gifStripBlob, 'timeless-gif-strip-' + Date.now() + '.gif');
     toast('GIF sharing is not supported here, so the GIF was saved instead.');
   }
 });
@@ -1581,6 +1583,7 @@ function showStrip(blob, isPast) {
     currentUrl = null;
     finalImg.removeAttribute('src');
   }
+  refreshPayBadge();
 }
 
 async function renderGallery() {
@@ -1713,8 +1716,145 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(link.href), 2000);
 }
 
+let pendingPaidSave = null;
+async function refreshPayBadge() {
+  if (!payFreeBadge || typeof PaySystem === 'undefined') return;
+  try {
+    const state = await PaySystem.status();
+    payFreeBadge.classList.remove('is-error');
+    const remaining = Number(state.free_remaining || 0);
+    const total = Number(state.free_total || 0);
+    if (!state.enabled || (!state.gif_paid && !state.strip_paid)) {
+      payFreeBadge.textContent = 'All saves are free';
+      payFreeBadge.classList.add('is-free');
+      return;
+    }
+    payFreeBadge.textContent = 'Free ' + remaining + ' of ' + total;
+    payFreeBadge.classList.remove('is-free');
+  } catch (err) {
+    console.error('Could not check free-save status:', err);
+    payFreeBadge.textContent = 'Free-save status unavailable while offline';
+    payFreeBadge.classList.add('is-error');
+  }
+}
+
+async function openPaidSaveDialog(mediaType, blob, filename, price) {
+  pendingPaidSave = { mediaType, blob, filename };
+  $('pay-voucher-input').value = '';
+  $('pay-pin-input').value = '';
+  $('pay-dialog-message').textContent = '';
+  $('pay-dialog-price').textContent = price == null ? '' : 'This save costs ₱' + Number(price).toFixed(2) + '. Bundles may also be available.';
+  const bundleSelect = $('pay-bundle-select');
+  bundleSelect.replaceChildren(new Option('Single save', ''));
+  try {
+    const data = await PaySystem.load();
+    const settings = data.settings || {};
+    const qrArea = $('pay-qr-area');
+    const qrImage = $('pay-qr-image');
+    const qrLabel = $('pay-qr-label');
+    const paymentLink = $('pay-payment-link');
+    if (settings.payment_qr_url) {
+      qrImage.src = settings.payment_qr_url;
+      qrLabel.textContent = settings.payment_qr_label || 'Scan to pay';
+      qrArea.classList.remove('hidden');
+    } else {
+      qrImage.removeAttribute('src');
+      qrArea.classList.add('hidden');
+    }
+    if (settings.payment_link) {
+      try {
+        const url = new URL(settings.payment_link);
+        if (url.protocol !== 'https:') throw new Error('Invalid payment link');
+        paymentLink.href = url.href;
+        paymentLink.classList.remove('hidden');
+      } catch (err) {
+        paymentLink.removeAttribute('href');
+        paymentLink.classList.add('hidden');
+        console.error('Ignoring invalid payment link:', err);
+      }
+    } else {
+      paymentLink.removeAttribute('href');
+      paymentLink.classList.add('hidden');
+    }
+    data.bundles.filter((bundle) => bundle.media_type === mediaType &&
+      (!bundle.event_id || bundle.event_id === PaySystem.activeEventId()))
+      .forEach((bundle) => bundleSelect.add(new Option(
+        bundle.name + ' · ' + bundle.quantity + ' saves for ₱' + Number(bundle.price).toFixed(2),
+        bundle.id
+      )));
+  } catch (err) {
+    console.error('Could not load save bundles:', err);
+    $('pay-dialog-message').textContent = 'Bundles could not load. A voucher or single cashier approval may still be used.';
+  }
+  if (!payDialog.open) payDialog.showModal();
+}
+
+async function saveWithEntitlement(mediaType, blob, filename) {
+  if (!blob) return;
+  try {
+    const result = await PaySystem.claim(mediaType);
+    await refreshPayBadge();
+    if (result.allowed) {
+      downloadBlob(blob, filename);
+      if (mediaType === 'strip') Fx.confetti({ count: 90 });
+      return;
+    }
+    if (result.reason === 'payment_required') {
+      await openPaidSaveDialog(mediaType, blob, filename, result.price);
+      return;
+    }
+    throw new Error('Save authorization was not granted.');
+  } catch (err) {
+    console.error('Save authorization failed:', err);
+    toast('Could not verify this save. Check the booth internet connection and try again.');
+  }
+}
+
+$('pay-dialog-cancel').addEventListener('click', () => {
+  pendingPaidSave = null;
+  payDialog.close();
+});
+$('pay-dialog').addEventListener('click', (event) => {
+  if (event.target === payDialog) {
+    pendingPaidSave = null;
+    payDialog.close();
+  }
+});
+$('pay-dialog-confirm').addEventListener('click', async () => {
+  if (!pendingPaidSave) return;
+  const voucher = $('pay-voucher-input').value.trim();
+  const pin = $('pay-pin-input').value.trim();
+  if (!!voucher === !!pin) {
+    $('pay-dialog-message').textContent = 'Enter a voucher code or have the cashier enter a PIN.';
+    return;
+  }
+  const button = $('pay-dialog-confirm');
+  button.disabled = true;
+  $('pay-dialog-message').textContent = 'Verifying…';
+  try {
+    const result = await PaySystem.purchase(pendingPaidSave.mediaType, {
+      voucher, pin, bundleId: voucher ? '' : $('pay-bundle-select').value
+    });
+    if (!result.allowed) throw new Error(result.message || 'Payment was not approved.');
+    const save = pendingPaidSave;
+    pendingPaidSave = null;
+    payDialog.close();
+    downloadBlob(save.blob, save.filename);
+    if (save.mediaType === 'strip') Fx.confetti({ count: 90 });
+    await refreshPayBadge();
+  } catch (err) {
+    $('pay-dialog-message').textContent = err.message || 'Payment could not be verified. Please try again.';
+  } finally {
+    button.disabled = false;
+  }
+});
+window.addEventListener('pay-event-changed', () => refreshPayBadge());
+window.addEventListener('storage', (event) => {
+  if (event.key === 'ts-pay-active-event') refreshPayBadge();
+});
+
 downloadBtn.addEventListener('click', () => {
-  if (currentBlob) { downloadBlob(currentBlob); Fx.confetti({ count: 90 }); }
+  if (currentBlob) saveWithEntitlement('strip', currentBlob);
 });
 
 // ---- QR / phone download link ----
@@ -1768,7 +1908,7 @@ shareBtn.addEventListener('click', async () => {
       if (err && err.name !== 'AbortError') toast('Could not share: ' + err.message);
     }
   } else {
-    downloadBlob(currentBlob);
+    saveWithEntitlement('strip', currentBlob);
     toast("Sharing isn't supported on this browser, so the strip was saved instead.");
   }
 });

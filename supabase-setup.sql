@@ -167,3 +167,403 @@ end $$;
 grant execute on function public.ts_activity_stats(text, bigint, bigint) to authenticated;
 grant execute on function public.ts_activity_summary(text, bigint) to authenticated;
 grant execute on function public.ts_cleanup(text, bigint) to authenticated;
+
+-- ============================================================
+-- 7) PAID SAVES (server-authoritative limits, approvals and sales)
+--    Re-running this file is safe. Payment stays free until enabled.
+-- ============================================================
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
+
+create table if not exists public.ts_pay_settings (
+  lib text primary key,
+  enabled boolean not null default false,
+  free_saves integer not null default 3 check (free_saves >= 0),
+  gif_paid boolean not null default true,
+  strip_paid boolean not null default false,
+  gif_price numeric(10,2) not null default 20 check (gif_price >= 0),
+  strip_price numeric(10,2) not null default 20 check (strip_price >= 0),
+  payment_qr_url text,
+  payment_qr_label text,
+  payment_link text,
+  updated_at bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+alter table public.ts_pay_settings add column if not exists payment_qr_url text;
+alter table public.ts_pay_settings add column if not exists payment_qr_label text;
+alter table public.ts_pay_settings add column if not exists payment_link text;
+alter table public.ts_pay_settings enable row level security;
+drop policy if exists "pay settings read" on public.ts_pay_settings;
+drop policy if exists "pay settings admin write" on public.ts_pay_settings;
+create policy "pay settings read" on public.ts_pay_settings for select to anon, authenticated using (true);
+create policy "pay settings admin write" on public.ts_pay_settings for all to authenticated
+  using (public.ts_is_admin()) with check (public.ts_is_admin());
+
+create table if not exists public.ts_pay_events (
+  lib text not null,
+  id text not null,
+  name text not null,
+  charge_mode text not null default 'inherit' check (charge_mode in ('inherit','free','paid')),
+  free_saves integer check (free_saves is null or free_saves >= 0),
+  gif_paid boolean,
+  strip_paid boolean,
+  gif_price numeric(10,2) check (gif_price is null or gif_price >= 0),
+  strip_price numeric(10,2) check (strip_price is null or strip_price >= 0),
+  created_at bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  primary key (lib, id)
+);
+alter table public.ts_pay_events enable row level security;
+drop policy if exists "pay events read" on public.ts_pay_events;
+drop policy if exists "pay events admin write" on public.ts_pay_events;
+create policy "pay events read" on public.ts_pay_events for select to anon, authenticated using (true);
+create policy "pay events admin write" on public.ts_pay_events for all to authenticated
+  using (public.ts_is_admin()) with check (public.ts_is_admin());
+
+create table if not exists public.ts_pay_bundles (
+  lib text not null,
+  id text not null,
+  event_id text,
+  name text not null,
+  media_type text not null check (media_type in ('gif','strip')),
+  quantity integer not null check (quantity > 0),
+  price numeric(10,2) not null check (price >= 0),
+  active boolean not null default true,
+  primary key (lib, id)
+);
+alter table public.ts_pay_bundles enable row level security;
+drop policy if exists "pay bundles read" on public.ts_pay_bundles;
+drop policy if exists "pay bundles admin write" on public.ts_pay_bundles;
+create policy "pay bundles read" on public.ts_pay_bundles for select to anon, authenticated using (true);
+create policy "pay bundles admin write" on public.ts_pay_bundles for all to authenticated
+  using (public.ts_is_admin()) with check (public.ts_is_admin());
+
+create table if not exists public.ts_pay_usage (
+  lib text not null,
+  event_id text not null,
+  device_id text not null,
+  free_saves integer not null default 0 check (free_saves >= 0),
+  updated_at bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  primary key (lib, event_id, device_id)
+);
+alter table public.ts_pay_usage enable row level security;
+drop policy if exists "pay usage admin read" on public.ts_pay_usage;
+create policy "pay usage admin read" on public.ts_pay_usage for select to authenticated using (public.ts_is_admin());
+
+create table if not exists public.ts_pay_sales (
+  id uuid primary key default gen_random_uuid(),
+  lib text not null,
+  event_id text,
+  event_name text not null default 'No event',
+  device_id text,
+  media_type text not null check (media_type in ('gif','strip')),
+  quantity integer not null check (quantity > 0),
+  amount numeric(10,2) not null check (amount >= 0),
+  payment_method text not null check (payment_method in ('cashier_pin','counter_voucher')),
+  description text not null default '',
+  created_at bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+create index if not exists ts_pay_sales_lib_date on public.ts_pay_sales (lib, created_at);
+create index if not exists ts_pay_sales_lib_event on public.ts_pay_sales (lib, event_id, created_at);
+alter table public.ts_pay_sales enable row level security;
+drop policy if exists "pay sales admin read" on public.ts_pay_sales;
+create policy "pay sales admin read" on public.ts_pay_sales for select to authenticated using (public.ts_is_admin());
+
+create table if not exists public.ts_pay_vouchers (
+  lib text not null,
+  code_hash text not null,
+  event_id text,
+  media_type text not null check (media_type in ('gif','strip')),
+  units_remaining integer not null check (units_remaining >= 0),
+  units_total integer not null check (units_total > 0),
+  created_at bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  primary key (lib, code_hash)
+);
+alter table public.ts_pay_vouchers enable row level security;
+
+create table if not exists public.ts_pay_staff_pin (
+  lib text primary key,
+  pin_hash text not null,
+  updated_at bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+alter table public.ts_pay_staff_pin enable row level security;
+
+create table if not exists public.ts_pay_pin_attempts (
+  lib text not null,
+  device_id text not null,
+  failures integer not null default 0,
+  window_started bigint not null,
+  locked_until bigint not null default 0,
+  primary key (lib, device_id)
+);
+alter table public.ts_pay_pin_attempts enable row level security;
+
+create table if not exists public.ts_pay_credits (
+  id uuid primary key default gen_random_uuid(),
+  lib text not null,
+  event_id text not null,
+  device_id text not null,
+  media_type text not null check (media_type in ('gif','strip')),
+  remaining integer not null check (remaining >= 0),
+  created_at bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+create index if not exists ts_pay_credits_lookup on public.ts_pay_credits (lib, event_id, device_id, media_type, remaining);
+alter table public.ts_pay_credits enable row level security;
+
+create or replace function public.ts_pay_set_pin(p_lib text, p_pin text)
+returns void language plpgsql security definer set search_path = public, extensions as $$
+begin
+  if not public.ts_is_admin() then raise exception 'Admin access required'; end if;
+  if p_pin !~ '^[0-9]{4,8}$' then raise exception 'PIN must be 4 to 8 digits'; end if;
+  insert into public.ts_pay_staff_pin(lib, pin_hash)
+  values (p_lib, extensions.crypt(p_pin, extensions.gen_salt('bf')))
+  on conflict (lib) do update set pin_hash = excluded.pin_hash,
+    updated_at = (extract(epoch from now()) * 1000)::bigint;
+end $$;
+grant execute on function public.ts_pay_set_pin(text,text) to authenticated;
+
+create or replace function public.ts_pay_reset_device(p_lib text, p_event_id text, p_device_id text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.ts_is_admin() then raise exception 'Admin access required'; end if;
+  delete from public.ts_pay_usage
+   where lib = p_lib and event_id = coalesce(nullif(p_event_id, ''), 'default') and device_id = p_device_id;
+end $$;
+grant execute on function public.ts_pay_reset_device(text,text,text) to authenticated;
+
+create or replace function public.ts_pay_issue_voucher(
+  p_lib text, p_code_hash text, p_event_id text, p_media_type text,
+  p_quantity integer, p_amount numeric
+) returns void language plpgsql security definer set search_path = public as $$
+declare v_event_name text := 'No event';
+begin
+  if not public.ts_is_admin() then raise exception 'Admin access required'; end if;
+  if p_media_type not in ('gif','strip') or p_quantity < 1 or p_amount < 0 then
+    raise exception 'Invalid voucher details';
+  end if;
+  if p_code_hash !~ '^[0-9a-f]{64}$' then raise exception 'Invalid voucher code'; end if;
+  if p_event_id is not null then
+    select name into v_event_name from public.ts_pay_events where lib = p_lib and id = p_event_id;
+    if not found then raise exception 'Event not found'; end if;
+  end if;
+  insert into public.ts_pay_vouchers(lib, code_hash, event_id, media_type, units_remaining, units_total)
+  values (p_lib, p_code_hash, nullif(p_event_id, ''), p_media_type, p_quantity, p_quantity);
+  insert into public.ts_pay_sales(lib, event_id, event_name, media_type, quantity, amount, payment_method, description)
+  values (p_lib, nullif(p_event_id, ''), v_event_name, p_media_type, p_quantity, p_amount, 'counter_voucher', 'Counter voucher issued');
+end $$;
+grant execute on function public.ts_pay_issue_voucher(text,text,text,text,integer,numeric) to authenticated;
+
+create or replace function public.ts_pay_status(
+  p_lib text, p_event_id text, p_device_id text
+) returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_event text := coalesce(nullif(p_event_id, ''), 'default');
+  v_enabled boolean := false;
+  v_charge_mode text := 'inherit';
+  v_free integer := 3;
+  v_used integer := 0;
+  v_gif_paid boolean := false;
+  v_strip_paid boolean := false;
+  v_gif_price numeric(10,2) := 0;
+  v_strip_price numeric(10,2) := 0;
+begin
+  select enabled, free_saves, gif_paid, strip_paid, gif_price, strip_price
+    into v_enabled, v_free, v_gif_paid, v_strip_paid, v_gif_price, v_strip_price
+    from public.ts_pay_settings where lib = p_lib;
+  if not found then
+    v_enabled := false; v_free := 3; v_gif_paid := false; v_strip_paid := false;
+    v_gif_price := 0; v_strip_price := 0;
+  end if;
+  if exists (select 1 from public.ts_pay_events where lib = p_lib and id = v_event) then
+    select charge_mode, coalesce(free_saves, v_free),
+           coalesce(gif_paid, v_gif_paid), coalesce(strip_paid, v_strip_paid),
+           coalesce(gif_price, v_gif_price), coalesce(strip_price, v_strip_price)
+      into v_charge_mode, v_free, v_gif_paid, v_strip_paid, v_gif_price, v_strip_price
+      from public.ts_pay_events where lib = p_lib and id = v_event;
+  end if;
+  if not v_enabled or v_charge_mode = 'free' then v_gif_paid := false; v_strip_paid := false; end if;
+  select free_saves into v_used from public.ts_pay_usage
+   where lib = p_lib and event_id = v_event and device_id = p_device_id;
+  v_used := coalesce(v_used, 0);
+  return jsonb_build_object(
+    'event_id', nullif(p_event_id, ''), 'enabled', v_enabled,
+    'free_remaining', greatest(v_free - v_used, 0), 'free_total', greatest(v_free, 0),
+    'gif_paid', v_gif_paid, 'strip_paid', v_strip_paid,
+    'gif_price', v_gif_price, 'strip_price', v_strip_price
+  );
+end $$;
+grant execute on function public.ts_pay_status(text,text,text) to anon, authenticated;
+
+create or replace function public.ts_pay_consume_save(
+  p_lib text, p_event_id text, p_device_id text, p_media_type text
+) returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_event text := coalesce(nullif(p_event_id, ''), 'default');
+  v_enabled boolean := false;
+  v_charge_mode text := 'inherit';
+  v_free integer := 3;
+  v_used integer := 0;
+  v_gif_paid boolean := false;
+  v_strip_paid boolean := false;
+  v_gif_price numeric(10,2) := 0;
+  v_strip_price numeric(10,2) := 0;
+  v_paid boolean := false;
+  v_price numeric(10,2) := 0;
+  v_item record;
+  v_now bigint := (extract(epoch from now()) * 1000)::bigint;
+begin
+  if p_media_type not in ('gif','strip') or p_device_id is null or length(p_device_id) > 100 then
+    raise exception 'Invalid save request';
+  end if;
+  select enabled, free_saves, gif_paid, strip_paid, gif_price, strip_price
+    into v_enabled, v_free, v_gif_paid, v_strip_paid, v_gif_price, v_strip_price
+    from public.ts_pay_settings where lib = p_lib;
+  if not found then
+    v_enabled := false; v_free := 3; v_gif_paid := false; v_strip_paid := false;
+    v_gif_price := 0; v_strip_price := 0;
+  end if;
+  v_paid := case when p_media_type = 'gif' then v_gif_paid else v_strip_paid end;
+  v_price := case when p_media_type = 'gif' then v_gif_price else v_strip_price end;
+  if exists (select 1 from public.ts_pay_events where lib = p_lib and id = v_event) then
+    select charge_mode, coalesce(free_saves, v_free),
+           coalesce(case when p_media_type = 'gif' then gif_paid else strip_paid end, v_paid),
+           coalesce(case when p_media_type = 'gif' then gif_price else strip_price end, v_price)
+      into v_charge_mode, v_free, v_paid, v_price
+      from public.ts_pay_events where lib = p_lib and id = v_event;
+  end if;
+  v_paid := v_enabled and v_paid and v_charge_mode <> 'free';
+  if not v_paid then
+    return jsonb_build_object('allowed', true, 'reason', 'free', 'free_remaining', greatest(v_free, 0), 'free_total', greatest(v_free, 0));
+  end if;
+
+  insert into public.ts_pay_usage(lib, event_id, device_id, free_saves)
+  values (p_lib, v_event, p_device_id, 0) on conflict do nothing;
+  update public.ts_pay_usage set free_saves = free_saves + 1, updated_at = v_now
+   where lib = p_lib and event_id = v_event and device_id = p_device_id and free_saves < v_free
+   returning free_saves into v_used;
+  if found then
+    return jsonb_build_object('allowed', true, 'reason', 'free', 'free_remaining', greatest(v_free - v_used, 0), 'free_total', greatest(v_free, 0));
+  end if;
+
+  update public.ts_pay_credits set remaining = remaining - 1
+   where id = (
+     select id from public.ts_pay_credits
+      where lib = p_lib and event_id = v_event and device_id = p_device_id
+        and media_type = p_media_type and remaining > 0
+      order by created_at, id limit 1 for update
+   ) returning * into v_item;
+  if found then
+    return jsonb_build_object('allowed', true, 'reason', 'paid', 'free_remaining', 0, 'free_total', greatest(v_free, 0));
+  end if;
+  return jsonb_build_object('allowed', false, 'reason', 'payment_required',
+    'free_remaining', 0, 'free_total', greatest(v_free, 0), 'price', v_price);
+end $$;
+grant execute on function public.ts_pay_consume_save(text,text,text,text) to anon, authenticated;
+
+create or replace function public.ts_pay_purchase_save(
+  p_lib text, p_event_id text, p_device_id text, p_media_type text,
+  p_voucher text default null, p_staff_pin text default null, p_bundle_id text default null
+) returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+declare
+  v_event text := coalesce(nullif(p_event_id, ''), 'default');
+  v_enabled boolean := false;
+  v_charge_mode text := 'inherit';
+  v_gif_paid boolean := false;
+  v_strip_paid boolean := false;
+  v_gif_price numeric(10,2) := 0;
+  v_strip_price numeric(10,2) := 0;
+  v_paid boolean := false;
+  v_price numeric(10,2) := 0;
+  v_free integer := 3;
+  v_event_name text := 'No event';
+  v_pin_hash text;
+  v_voucher record;
+  v_bundle record;
+  v_attempt record;
+  v_units integer := 1;
+  v_amount numeric(10,2);
+  v_now bigint := (extract(epoch from now()) * 1000)::bigint;
+begin
+  if p_media_type not in ('gif','strip') or p_device_id is null or length(p_device_id) > 100 then
+    raise exception 'Invalid save request';
+  end if;
+  select enabled, free_saves,
+         gif_paid, strip_paid, gif_price, strip_price
+    into v_enabled, v_free, v_gif_paid, v_strip_paid, v_gif_price, v_strip_price
+    from public.ts_pay_settings where lib = p_lib;
+  if not found then raise exception 'Payment settings are not configured'; end if;
+  v_paid := case when p_media_type = 'gif' then v_gif_paid else v_strip_paid end;
+  v_price := case when p_media_type = 'gif' then v_gif_price else v_strip_price end;
+  if exists (select 1 from public.ts_pay_events where lib = p_lib and id = v_event) then
+    select charge_mode, coalesce(free_saves, v_free),
+           coalesce(case when p_media_type = 'gif' then gif_paid else strip_paid end, v_paid),
+           coalesce(case when p_media_type = 'gif' then gif_price else strip_price end, v_price),
+           name into v_charge_mode, v_free, v_paid, v_price, v_event_name
+      from public.ts_pay_events where lib = p_lib and id = v_event;
+  end if;
+  v_paid := v_enabled and v_paid and v_charge_mode <> 'free';
+  if not v_paid then raise exception 'This save is free; refresh and try again'; end if;
+
+  if nullif(p_voucher, '') is not null then
+    select * into v_voucher from public.ts_pay_vouchers
+     where lib = p_lib
+       and code_hash = encode(extensions.digest(upper(trim(p_voucher)), 'sha256'), 'hex')
+       and media_type = p_media_type and units_remaining > 0
+       and (event_id is null or event_id = v_event)
+     for update;
+    if not found then raise exception 'Voucher code is invalid, used, or for a different event or format'; end if;
+    update public.ts_pay_vouchers set units_remaining = units_remaining - 1
+     where lib = p_lib and code_hash = v_voucher.code_hash;
+    return jsonb_build_object('allowed', true, 'reason', 'voucher', 'free_remaining', 0, 'free_total', v_free);
+  end if;
+
+  select pin_hash into v_pin_hash from public.ts_pay_staff_pin where lib = p_lib;
+  if v_pin_hash is null then
+    return jsonb_build_object('allowed', false, 'message', 'Staff PIN has not been configured.');
+  end if;
+  select * into v_attempt from public.ts_pay_pin_attempts
+   where lib = p_lib and device_id = p_device_id for update;
+  if found and v_attempt.locked_until > v_now then
+    return jsonb_build_object('allowed', false, 'message', 'Too many incorrect PIN attempts. Please wait a few minutes.');
+  end if;
+  if p_staff_pin is null or extensions.crypt(p_staff_pin, v_pin_hash) <> v_pin_hash then
+    insert into public.ts_pay_pin_attempts(lib, device_id, failures, window_started, locked_until)
+    values (p_lib, p_device_id, 1, v_now, 0)
+    on conflict (lib, device_id) do update set
+      failures = case when public.ts_pay_pin_attempts.window_started <= excluded.window_started - 600000
+                      then 1 else public.ts_pay_pin_attempts.failures + 1 end,
+      window_started = case when public.ts_pay_pin_attempts.window_started <= excluded.window_started - 600000
+                            then excluded.window_started else public.ts_pay_pin_attempts.window_started end,
+      locked_until = case when (case when public.ts_pay_pin_attempts.window_started <= excluded.window_started - 600000
+                                     then 1 else public.ts_pay_pin_attempts.failures + 1 end) >= 5
+                          then excluded.window_started + 300000 else 0 end
+    returning failures, locked_until into v_attempt;
+    if v_attempt.locked_until > v_now then
+      return jsonb_build_object('allowed', false, 'message', 'Too many incorrect PIN attempts. Please wait a few minutes.');
+    end if;
+    return jsonb_build_object('allowed', false, 'message', 'Staff PIN was not accepted.');
+  end if;
+  delete from public.ts_pay_pin_attempts where lib = p_lib and device_id = p_device_id;
+  if nullif(p_bundle_id, '') is not null then
+    select * into v_bundle from public.ts_pay_bundles
+     where lib = p_lib and id = p_bundle_id and active and media_type = p_media_type
+       and (event_id is null or event_id = v_event)
+     order by (event_id is not null) desc limit 1;
+    if not found then raise exception 'That bundle is not available for this event and format'; end if;
+    v_units := v_bundle.quantity;
+    v_amount := v_bundle.price;
+  else
+    v_amount := v_price;
+  end if;
+  insert into public.ts_pay_sales(lib, event_id, event_name, device_id, media_type, quantity, amount, payment_method, description)
+  values (p_lib, nullif(p_event_id, ''), v_event_name, p_device_id, p_media_type, v_units, v_amount, 'cashier_pin',
+          case when v_units > 1 then 'Bundle: ' || v_bundle.name else 'Cashier-approved save' end);
+  if v_units > 1 then
+    insert into public.ts_pay_credits(lib, event_id, device_id, media_type, remaining)
+    values (p_lib, v_event, p_device_id, p_media_type, v_units - 1);
+  end if;
+  return jsonb_build_object('allowed', true, 'reason', 'paid', 'free_remaining', 0, 'free_total', v_free);
+end $$;
+grant execute on function public.ts_pay_purchase_save(text,text,text,text,text,text,text) to anon, authenticated;
+
+grant select on public.ts_pay_settings, public.ts_pay_events, public.ts_pay_bundles to anon, authenticated;
+grant insert, update, delete on public.ts_pay_settings, public.ts_pay_events, public.ts_pay_bundles to authenticated;
+grant select on public.ts_pay_usage, public.ts_pay_sales to authenticated;
