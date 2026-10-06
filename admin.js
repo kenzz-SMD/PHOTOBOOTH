@@ -382,9 +382,13 @@ function makeCard(t) {
         'Delete "' + t.name + '"?',
         'This removes the template from the photobooth. This cannot be undone.');
       if (!ok) return;
-      await TemplateStore.remove(t.id);
-      await renderGrid();
-      toast('Deleted "' + t.name + '"');
+      try {
+        await TemplateStore.remove(t.id);
+        await renderGrid();
+        toast('Deleted "' + t.name + '"');
+      } catch (err) {
+        toast('Could not delete template: ' + err.message);
+      }
     };
     actions.appendChild(edit);
     actions.appendChild(del);
@@ -397,8 +401,19 @@ async function renderGrid() {
   thumbUrls.forEach((u) => URL.revokeObjectURL(u));
   thumbUrls = [];
 
-  const custom = await TemplateStore.list().catch(() => []);
-  await loadCats();
+  const errors = [];
+  let custom = [];
+  try {
+    custom = await TemplateStore.list();
+  } catch (err) {
+    errors.push('Saved templates could not be loaded: ' + err.message);
+  }
+  try {
+    await loadCats();
+  } catch (err) {
+    cats = [];
+    errors.push('Categories could not be loaded: ' + err.message);
+  }
   fillCatSelects();
   grid.innerHTML = '';
   const items = BUILTIN_TEMPLATES.map((b) => ({
@@ -427,6 +442,7 @@ async function renderGrid() {
   }
   countEl.textContent = f === 'all' ? items.length : shown.length + ' / ' + items.length;
   updateCategoryCounts(items);
+  if (errors.length) toast(errors.join(' '));
 }
 
 // ===================== CATEGORIES =====================
@@ -434,7 +450,7 @@ let cats = [];     // visible categories (defaults + yours)
 let catCounts = {};
 
 async function loadCats() {
-  try { cats = await CategoryStore.list(); } catch (e) { cats = []; }
+  cats = await CategoryStore.list();
 }
 
 function catName(id) {
@@ -522,8 +538,16 @@ function renderCategories() {
       b.onclick = fn;
       return b;
     };
-    const up = mk('▲', 'Move up', async () => { await CategoryStore.move(c.id, -1); await renderGrid(); });
-    const down = mk('▼', 'Move down', async () => { await CategoryStore.move(c.id, 1); await renderGrid(); });
+    const move = (direction) => async () => {
+      try {
+        await CategoryStore.move(c.id, direction);
+        await renderGrid();
+      } catch (err) {
+        toast('Could not reorder category: ' + err.message);
+      }
+    };
+    const up = mk('▲', 'Move up', move(-1));
+    const down = mk('▼', 'Move down', move(1));
     up.disabled = i === 0; down.disabled = i === cats.length - 1;
     const del = mk('🗑', c.id === DEFAULT_CATEGORY_ID ? 'This category can’t be removed' : 'Delete category', async () => {
       const ok = await confirmDialog('Delete "' + c.name + '"?',
@@ -560,9 +584,13 @@ $('cat-add-btn').onclick = async () => {
 };
 $('cat-new-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('cat-add-btn').click(); });
 $('cat-restore').onclick = async () => {
-  await CategoryStore.restoreDefaults();
-  await renderGrid();
-  toast('Default categories restored.');
+  try {
+    await CategoryStore.restoreDefaults();
+    await renderGrid();
+    toast('Default categories restored.');
+  } catch (err) {
+    toast('Could not restore categories: ' + err.message);
+  }
 };
 
 // ===================== EDIT (rename + slot coordinates) =====================

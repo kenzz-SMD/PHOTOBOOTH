@@ -3,14 +3,14 @@
 // * Same-origin files: network first (always fresh when online), cache as fallback.
 // * Face/segmentation AI models and the GIF encoder from CDNs: cached after first use.
 // * Cloud sync (Supabase) requests are never cached - the app queues changes while offline.
-const VERSION = 'v32'; // bump
+const VERSION = 'v33'; // bump
 const CACHE = 'timeless-strips-' + VERSION;
 const CDN_HOSTS = ['cdn.jsdelivr.net', 'storage.googleapis.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];   // fonts are cached too, so the title font also works offline
 
 const PRECACHE = [
   './', 'index.html', 'admin.html',
   'style.css', 'admin.css',
-  'script.js', 'admin.js', 'admin-auth.js', 'admin-devices.js', 'admin-tabs.js', 'admin-fx.js', 'admin-payments.js', 'admin-fx.css', 'admin-theme.css', 'device-tracer.js', 'pay-system.js', 'cloud-config.js', 'i18n.js', 'fx.js', 'share-ui.js', 'ui.css', 'get.html', 'templates-store.js', 'icons.js', 'face-engine.js',
+  'script.js', 'admin.js', 'admin-auth.js', 'admin-devices.js', 'admin-tabs.js', 'admin-fx.js', 'admin-payments.js', 'admin-fx.css', 'admin-theme.css', 'device-tracer.js', 'pay-system.js', 'payment-return.html', 'cloud-config.js', 'i18n.js', 'fx.js', 'share-ui.js', 'ui.css', 'get.html', 'templates-store.js', 'icons.js', 'face-engine.js',
   'qr.js',
   'templates/template1.png', 'templates/template2.png'
 ];

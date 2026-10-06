@@ -15,7 +15,7 @@
     card.className = 'card pay-card';
     card.innerHTML =
       '<h2>💳 Paid saves <span id="pay-state" class="pill">Loading</span></h2>' +
-      '<p class="muted small">Free saves are shared across GIFs and strips on this device, per event. Payment, vouchers and sales require an online Supabase connection. Run the updated <code>supabase-setup.sql</code> in Supabase SQL Editor to enable these controls.</p>' +
+      '<p class="muted small">Free saves are shared across GIFs and strips on this device, per event. GCash bundle payments use PayMongo hosted checkout; payment is confirmed by webhook and the exact bundle credits are added automatically. Configure the PayMongo sandbox secret on the Supabase Edge Functions, never in this public dashboard. See <a href="supabase/README.md" target="_blank" rel="noopener">sandbox setup steps</a>.</p>' +
       '<div class="pay-block"><h3>Booth setup</h3><div class="pay-grid">' +
         '<label class="pay-toggle"><input id="pay-enabled" type="checkbox"> Turn on paid saves</label>' +
         '<label>Free saves per device<input id="pay-free" type="number" min="0" step="1" value="3"></label>' +
@@ -23,12 +23,6 @@
         '<label><span><input id="pay-strip-on" type="checkbox"> Charge for strip saves</span><input id="pay-strip-price" type="number" min="0" step="0.01" value="20" aria-label="Strip price in pesos"></label>' +
       '</div><button id="pay-save-settings" type="button" class="btn">Save payment settings</button>' +
       '<p id="pay-settings-msg" class="muted small" role="status"></p></div>' +
-        '<div class="pay-block"><h3>Payment QR for guests</h3><p class="muted small">Upload your current GCash/Maya merchant QR. Re-upload anytime to replace it. The QR image is public so guests can scan it; cashier approval is still required to authorize the download.</p>' +
-          '<div class="pay-grid"><label>Payment provider / instructions<input id="pay-qr-label" type="text" maxlength="100" placeholder="GCash · Send the amount shown"></label>' +
-          '<label>Optional payment link<input id="pay-payment-link" type="url" placeholder="https://…" autocomplete="off"></label>' +
-          '<label>Upload replacement QR (PNG, JPG, WebP; max 3 MB)<input id="pay-qr-file" type="file" accept="image/png,image/jpeg,image/webp"></label></div>' +
-          '<div id="pay-qr-preview-wrap" class="pay-qr-preview hidden"><img id="pay-qr-preview" alt="Current guest payment QR"></div>' +
-          '<button id="pay-save-qr" type="button" class="btn">Save / update payment QR</button><p id="pay-qr-msg" class="muted small" role="status"></p></div>' +
         '<div class="pay-block"><h3>Events</h3><p class="muted small">Choose an event on this booth device, then set its charging mode. “Paid” uses the global media switches and prices unless you enter event-specific overrides.</p>' +
         '<div class="pay-grid"><label>Active event on this device<select id="pay-device-event"><option value="">No event</option></select></label>' +
         '<label>Event to edit<select id="pay-event-edit"><option value="">Create a new event</option></select></label>' +
@@ -54,14 +48,15 @@
         '<label>Total collected (₱)<input id="pay-voucher-price" type="number" min="0" step="0.01" value="20"></label>' +
         '<label>For event<select id="pay-voucher-event"><option value="">All events</option></select></label>' +
       '</div><button id="pay-issue-voucher" type="button" class="btn">Issue voucher code</button><p id="pay-voucher-code" class="pay-code hidden" role="status"></p><p id="pay-voucher-msg" class="muted small"></p></div>' +
-      '<div class="pay-block"><h3>Cashier approval & device reset</h3><div class="pay-grid">' +
-        '<label>Staff PIN (4–8 digits)<input id="pay-pin" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password"></label>' +
+      '<div class="pay-block"><h3>Device free-save reset</h3><div class="pay-grid">' +
         '<label>Event to reset<select id="pay-reset-event"><option value="">No event</option></select></label>' +
         '<label>Device to reset<select id="pay-reset-device"><option value="">No device usage found</option></select></label>' +
-      '</div><div class="pay-actions"><button id="pay-set-pin" type="button" class="btn">Set staff PIN</button><button id="pay-refresh-devices" type="button" class="btn ghost">Refresh devices</button><button id="pay-reset" type="button" class="btn danger">Reset free saves</button></div><p id="pay-ops-msg" class="muted small" role="status"></p></div>' +
+      '</div><div class="pay-actions"><button id="pay-refresh-devices" type="button" class="btn ghost">Refresh devices</button><button id="pay-reset" type="button" class="btn danger">Reset free saves</button></div><p id="pay-ops-msg" class="muted small" role="status"></p></div>' +
       '<div class="pay-block"><h3>Sales report</h3><div class="pay-report-head"><label>From date<input id="pay-report-date" type="date"></label><button id="pay-refresh-report" type="button" class="btn ghost">Refresh report</button></div>' +
-        '<div id="pay-report-summary" class="pay-report-summary"></div><div class="pay-table-wrap"><table class="pay-table"><thead><tr><th>Day</th><th>Event</th><th>GIFs</th><th>Strips</th><th>Sales</th></tr></thead><tbody id="pay-report-rows"></tbody></table></div>' +
-        '<p class="muted small">Voucher sales are counted when codes are issued. PIN sales are counted when approved. Automatic GCash and Maya payments are not connected yet.</p></div>';
+        '<div id="pay-report-summary" class="pay-report-summary"></div><div id="pay-test-report-summary" class="pay-report-summary pay-test-summary hidden"></div><div class="pay-table-wrap"><table class="pay-table"><thead><tr><th>Day</th><th>Event</th><th>GIFs</th><th>Strips</th><th>Sales</th><th>Sandbox</th></tr></thead><tbody id="pay-report-rows"></tbody></table></div>' +
+        '<p class="muted small">Sandbox transactions are reported separately and excluded from real-sales totals.</p></div>' +
+      '<div class="pay-block"><div class="pay-report-head"><div><h3>Payment transaction log</h3><p class="muted small">Latest 250 read-only payment records. Transactions are confirmed by PayMongo; this log has no approval controls.</p></div><button id="pay-refresh-log" type="button" class="btn ghost">Refresh log</button></div>' +
+        '<div class="pay-table-wrap"><table class="pay-table"><thead><tr><th>Timestamp</th><th>Device / User ID</th><th>Product</th><th>Amount</th><th>Status</th><th>Mode</th></tr></thead><tbody id="pay-payment-log-rows"></tbody></table></div></div>';
     const main = document.querySelector('main');
     const cloud = $('cloud-card');
     if (cloud) main.insertBefore(card, cloud);
@@ -161,41 +156,10 @@
       $('pay-strip-on').checked = s.strip_paid;
       $('pay-gif-price').value = s.gif_price;
       $('pay-strip-price').value = s.strip_price;
-      $('pay-qr-label').value = s.payment_qr_label || '';
-      $('pay-payment-link').value = s.payment_link || '';
-      renderQrPreview(s.payment_qr_url || '');
       $('pay-state').textContent = s.enabled ? 'On' : 'Off · all saves free';
     } else $('pay-state').textContent = 'Not configured';
     renderEvents();
     showEvent(events.find((event) => event.id === $('pay-event-edit').value));
-  }
-  function renderQrPreview(url) {
-    const wrap = $('pay-qr-preview-wrap');
-    const image = $('pay-qr-preview');
-    image.src = url || '';
-    wrap.classList.toggle('hidden', !url);
-  }
-  async function savePaymentQr() {
-    const file = $('pay-qr-file').files[0];
-    if (file && (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 3 * 1024 * 1024)) {
-      throw new Error('Choose a PNG, JPG, or WebP QR image no larger than 3 MB.');
-    }
-    const link = $('pay-payment-link').value.trim();
-    if (link && !/^https:\/\//i.test(link)) throw new Error('Payment link must start with https://');
-    let imageUrl = $('pay-qr-preview').getAttribute('src') || null;
-    if (file) imageUrl = await DeviceTracker.uploadPaymentQr(file);
-    const label = $('pay-qr-label').value.trim();
-    await DeviceTracker.rest('ts_pay_settings?on_conflict=lib', {
-      method: 'POST', headers: jsonHeaders,
-      body: JSON.stringify({
-        lib: PaySystem.lib(), payment_qr_url: imageUrl,
-        payment_qr_label: label || null, payment_link: link || null,
-        updated_at: Date.now()
-      })
-    });
-    renderQrPreview(imageUrl);
-    $('pay-qr-file').value = '';
-    message('pay-qr-msg', imageUrl ? 'Guest payment QR updated.' : 'Payment QR removed.');
   }
   async function saveEvent() {
     const name = $('pay-event-name').value.trim();
@@ -303,35 +267,84 @@
     const groups = new Map();
     (sales || []).forEach((sale) => {
       const key = dayKey(sale.created_at) + '|' + sale.event_name;
-      if (!groups.has(key)) groups.set(key, { day: dayKey(sale.created_at), event: sale.event_name, gif: 0, strip: 0, amount: 0 });
+      if (!groups.has(key)) groups.set(key, { day: dayKey(sale.created_at), event: sale.event_name, gif: 0, strip: 0, amount: 0, testGif: 0, testStrip: 0, testAmount: 0 });
       const group = groups.get(key);
-      if (sale.media_type === 'gif') group.gif += Number(sale.quantity);
-      else group.strip += Number(sale.quantity);
-      group.amount += Number(sale.amount);
+      if (sale.payment_method === 'paymongo_test') {
+        if (sale.media_type === 'gif') group.testGif += Number(sale.quantity);
+        else group.testStrip += Number(sale.quantity);
+        group.testGif += Number(sale.gif_quantity || 0);
+        group.testAmount += Number(sale.amount);
+      } else {
+        if (sale.media_type === 'gif') group.gif += Number(sale.quantity);
+        else group.strip += Number(sale.quantity);
+        group.gif += Number(sale.gif_quantity || 0);
+        group.amount += Number(sale.amount);
+      }
     });
     const rows = Array.from(groups.values()).sort((a, b) => b.day.localeCompare(a.day) || a.event.localeCompare(b.event));
     const totalGif = rows.reduce((sum, row) => sum + row.gif, 0);
     const totalStrip = rows.reduce((sum, row) => sum + row.strip, 0);
     const totalAmount = rows.reduce((sum, row) => sum + row.amount, 0);
-    $('pay-report-summary').textContent = totalGif + ' GIFs sold · ' + totalStrip + ' strips sold · ₱' + totalAmount.toFixed(2) + ' total';
+    const totalTestAmount = rows.reduce((sum, row) => sum + row.testAmount, 0);
+    const totalTestGif = rows.reduce((sum, row) => sum + row.testGif, 0);
+    const totalTestStrip = rows.reduce((sum, row) => sum + row.testStrip, 0);
+    $('pay-report-summary').textContent = totalGif + ' GIFs sold · ' + totalStrip + ' strips sold · ₱' + totalAmount.toFixed(2) + ' real sales';
+    $('pay-test-report-summary').textContent = 'Sandbox: ' + totalTestGif + ' GIFs · ' + totalTestStrip + ' strips · ₱' + totalTestAmount.toFixed(2) + ' · excluded from real sales';
+    $('pay-test-report-summary').classList.toggle('hidden', totalTestAmount === 0);
     const tbody = $('pay-report-rows');
     tbody.replaceChildren();
     if (!rows.length) {
       const tr = document.createElement('tr'), td = document.createElement('td');
-      td.colSpan = 5; td.textContent = 'No sales for this period yet.'; tr.appendChild(td); tbody.appendChild(tr);
+      td.colSpan = 6; td.textContent = 'No sales for this period yet.'; tr.appendChild(td); tbody.appendChild(tr);
       return;
     }
     rows.forEach((row) => {
       const tr = document.createElement('tr');
-      [row.day, row.event, row.gif, row.strip, '₱' + row.amount.toFixed(2)].forEach((value) => {
+      [row.day, row.event, row.gif, row.strip, '₱' + row.amount.toFixed(2),
+        row.testAmount ? '₱' + row.testAmount.toFixed(2) + ' (' + row.testGif + ' GIFs, ' + row.testStrip + ' strips)' : '—'].forEach((value) => {
         const td = document.createElement('td'); td.textContent = String(value); tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+  async function refreshPaymentLog() {
+    const orders = await DeviceTracker.rest('ts_pay_orders?select=id,plan_id,product_name,device_id,amount,currency,status,last_payment_status,test_mode,created_at,paid_at&' +
+      libFilter() + '&order=created_at.desc&limit=250');
+    const tbody = $('pay-payment-log-rows');
+    tbody.replaceChildren();
+    if (!orders.length) {
+      const tr = document.createElement('tr'), td = document.createElement('td');
+      td.colSpan = 6;
+      td.textContent = 'No payment transactions yet.';
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+      return;
+    }
+    orders.forEach((order) => {
+      const tr = document.createElement('tr');
+      const timestamp = order.status === 'paid' && order.paid_at ? order.paid_at : order.created_at;
+      const created = new Date(Number(timestamp));
+      const product = order.product_name || order.plan_id || 'Photobooth purchase';
+      const status = order.status === 'pending' && order.last_payment_status === 'failed'
+        ? 'Declined · retry available'
+        : order.status;
+      [
+        Number.isFinite(created.getTime()) ? created.toLocaleString() : '—',
+        order.device_id || '—',
+        product,
+        '₱' + Number(order.amount).toFixed(2) + ' ' + (order.currency || 'PHP'),
+        status,
+        order.test_mode ? 'Sandbox' : 'Live'
+      ].forEach((value) => {
+        const td = document.createElement('td');
+        td.textContent = String(value);
+        tr.appendChild(td);
       });
       tbody.appendChild(tr);
     });
   }
   function bind() {
     $('pay-save-settings').addEventListener('click', () => saveSettings().catch((err) => message('pay-settings-msg', err.message, true)));
-    $('pay-save-qr').addEventListener('click', () => savePaymentQr().catch((err) => message('pay-qr-msg', err.message, true)));
     $('pay-event-edit').addEventListener('change', () => showEvent(events.find((event) => event.id === $('pay-event-edit').value)));
     $('pay-new-event').addEventListener('click', () => { $('pay-event-edit').value = ''; showEvent(null); });
     $('pay-save-event').addEventListener('click', () => saveEvent().catch((err) => message('pay-event-msg', err.message, true)));
@@ -341,14 +354,6 @@
     });
     $('pay-add-bundle').addEventListener('click', () => addBundle().catch((err) => message('pay-settings-msg', err.message, true)));
     $('pay-issue-voucher').addEventListener('click', () => issueVoucher().catch((err) => message('pay-voucher-msg', err.message, true)));
-    $('pay-set-pin').addEventListener('click', async () => {
-      try {
-        const pin = $('pay-pin').value;
-        await DeviceTracker.rest('rpc/ts_pay_set_pin', { method: 'POST', body: JSON.stringify({ p_lib: PaySystem.lib(), p_pin: pin }) });
-        $('pay-pin').value = '';
-        message('pay-ops-msg', 'Staff PIN saved securely.');
-      } catch (err) { message('pay-ops-msg', err.message, true); }
-    });
     $('pay-reset-event').addEventListener('change', () => refreshDevices().catch((err) => message('pay-ops-msg', err.message, true)));
     $('pay-refresh-devices').addEventListener('click', () => refreshDevices().catch((err) => message('pay-ops-msg', err.message, true)));
     $('pay-reset').addEventListener('click', async () => {
@@ -367,6 +372,7 @@
       } catch (err) { message('pay-ops-msg', err.message, true); }
     });
     $('pay-refresh-report').addEventListener('click', () => refreshReport().catch((err) => message('pay-settings-msg', err.message, true)));
+    $('pay-refresh-log').addEventListener('click', () => refreshPaymentLog().catch((err) => message('pay-settings-msg', err.message, true)));
     $('pay-report-date').addEventListener('change', () => refreshReport().catch((err) => message('pay-settings-msg', err.message, true)));
     $('pay-voucher-format').addEventListener('change', () => {
       $('pay-voucher-price').value = $('pay-voucher-format').value === 'gif' ? $('pay-gif-price').value : $('pay-strip-price').value;
@@ -378,7 +384,7 @@
     createCard();
     try {
       await loadSettings();
-      await Promise.all([refreshDevices(), refreshReport()]);
+      await Promise.all([refreshDevices(), refreshReport(), refreshPaymentLog()]);
     } catch (err) {
       $('pay-state').textContent = 'Connection error';
       message('pay-settings-msg', 'Payment controls could not load: ' + err.message, true);

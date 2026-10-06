@@ -1777,7 +1777,8 @@ body:has(#booth-screen:not(.hidden)) .roam-x { display: none; }
 .pay-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
 .pay-dialog-actions button { padding: 10px 16px; border: 0; border-radius: 999px; font: inherit; font-weight: 800; cursor: pointer; }
 #pay-dialog-cancel { color: #674a5a; background: #f2e4eb; }
-#pay-dialog-confirm { color: #fff; background: linear-gradient(135deg, #ff8fab, #ff5d7a); }
+#pay-dialog-confirm { color: #674a5a; background: #f2e4eb; }
+#pay-gcash-checkout, #pay-finish-save { color: #fff; background: linear-gradient(135deg, #15a86d, #087c51); }
 #pay-dialog-confirm:disabled { opacity: .55; cursor: wait; }
 #booth-screen #change-template-btn:hover:not(:disabled), #booth-screen #gallery-btn:hover:not(:disabled) {
   box-shadow: 0 9px 0 rgba(0, 0, 0, .22), 0 0 28px 6px rgba(255, 255, 255, .6), 0 16px 26px rgba(0, 0, 0, .22);

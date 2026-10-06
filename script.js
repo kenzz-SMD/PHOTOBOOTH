@@ -55,6 +55,7 @@ const video = $('camera');
 const stripBtn = $('strip-btn');
 const changeTemplateBtn = $('change-template-btn');
 const galleryBtn = $('gallery-btn');
+const boothHomeBtn = $('booth-home-btn');
 const canvas = $('canvas');
 const countdownEl = $('countdown');
 const flashEl = $('flash');
@@ -108,6 +109,7 @@ const galleryEl = $('gallery');
 
 
 let cameraStarted = false;
+let cameraRequestId = 0;
 let mirrorEnabled = true;
 let flashEnabled = true;
 let currentShotCount = 0;
@@ -164,7 +166,19 @@ startBtn.addEventListener('click', () => {
   adminLink.classList.add('hidden');
   welcomeScreen.classList.add('hidden');
   templateScreen.classList.remove('hidden');
+  window.scrollTo(0, 0);
 });
+
+function showWelcomeScreen() {
+  stopCamera();
+  [templateScreen, boothScreen, editScreen, resultScreen].forEach((screen) => screen.classList.add('hidden'));
+  welcomeScreen.classList.remove('hidden');
+  document.body.classList.add('welcome-visible');
+  window.dispatchEvent(new CustomEvent('booth-home'));
+  window.scrollTo(0, 0);
+}
+
+boothHomeBtn.addEventListener('click', showWelcomeScreen);
 
 function applyCameraMirror() {
   const transform = mirrorEnabled ? 'scaleX(-1)' : 'scaleX(1)';
@@ -478,11 +492,13 @@ templateConfirm.addEventListener('click', () => {
   boothScreen.classList.remove('hidden');
   templateLabel.textContent = 'Template: ' + selectedTemplate.name;
   stripBtn.textContent = I18N.t('btn.capture', { n: currentSlots().length });
+  window.scrollTo(0, 0);
 
   // a different template means the old edit no longer fits
   editState = null;
   stickers = [];
   currentStripId = null;
+  resetShotRail();
 
   startCamera();
 });
@@ -491,6 +507,7 @@ changeTemplateBtn.addEventListener('click', () => {
   bgAnim.classList.remove('off');
   boothScreen.classList.add('hidden');
   templateScreen.classList.remove('hidden');
+  window.scrollTo(0, 0);
 });
 
 // ===================== 2. CAMERA =====================
@@ -498,18 +515,34 @@ function startCamera() {
   if (cameraStarted) return;
   syncCameraTools();
   applyCameraMirror();
+  const requestId = ++cameraRequestId;
 
   navigator.mediaDevices.getUserMedia({ video: true })
     .then((stream) => {
+      if (requestId !== cameraRequestId || boothScreen.classList.contains('hidden')) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       video.srcObject = stream;
       cameraStarted = true;
       applyCameraMirror();
       startAr();
     })
     .catch((err) => {
+      if (requestId !== cameraRequestId) return;
       console.error('Camera error:', err);
       alert('Could not access camera: ' + err.message);
     });
+}
+
+function stopCamera() {
+  cameraRequestId += 1;
+  const stream = video && video.srcObject;
+  if (stream && typeof stream.getTracks === 'function') {
+    stream.getTracks().forEach((track) => track.stop());
+  }
+  if (video) video.srcObject = null;
+  cameraStarted = false;
 }
 
 stripBtn.addEventListener('click', () => {
@@ -517,6 +550,7 @@ stripBtn.addEventListener('click', () => {
   stripBtn.disabled = true;
   changeTemplateBtn.disabled = true;
   galleryBtn.disabled = true;
+  boothHomeBtn.disabled = true;
   motionFramesByShot = [];
   resetGifStrip();
   resetShotRail();
@@ -542,11 +576,13 @@ function captureStrip(shotNumber, photos) {
         setTimeout(() => captureStrip(shotNumber + 1, photos), 1000);
       } else {
         countdownEl.textContent = '';
+        boothHomeBtn.disabled = false;
         startEdit(photos);
       }
     }).catch((err) => {
       console.error('Could not capture photo slot:', err);
       countdownEl.textContent = '';
+      boothHomeBtn.disabled = false;
       [stripBtn, changeTemplateBtn, galleryBtn].forEach((button) => { button.disabled = false; });
       toast('Could not capture the strip: ' + err.message);
     });
@@ -1717,6 +1753,13 @@ function downloadBlob(blob, filename) {
 }
 
 let pendingPaidSave = null;
+let checkoutPollToken = 0;
+let checkoutBundles = [];
+function setPayDialogMessage(text, isError) {
+  const message = $('pay-dialog-message');
+  message.textContent = text;
+  message.classList.toggle('is-error', !!isError);
+}
 async function refreshPayBadge() {
   if (!payFreeBadge || typeof PaySystem === 'undefined') return;
   try {
@@ -1724,6 +1767,11 @@ async function refreshPayBadge() {
     payFreeBadge.classList.remove('is-error');
     const remaining = Number(state.free_remaining || 0);
     const total = Number(state.free_total || 0);
+    if (state.monthly_pass_active) {
+      payFreeBadge.textContent = 'Monthly pass active · saves unlocked';
+      payFreeBadge.classList.remove('is-free');
+      return;
+    }
     if (!state.enabled || (!state.gif_paid && !state.strip_paid)) {
       payFreeBadge.textContent = 'All saves are free';
       payFreeBadge.classList.add('is-free');
@@ -1739,60 +1787,38 @@ async function refreshPayBadge() {
 }
 
 async function openPaidSaveDialog(mediaType, blob, filename, price) {
-  pendingPaidSave = { mediaType, blob, filename };
+  pendingPaidSave = { mediaType, blob, filename, claimRequestId: crypto.randomUUID() };
   $('pay-voucher-input').value = '';
-  $('pay-pin-input').value = '';
-  $('pay-dialog-message').textContent = '';
-  $('pay-dialog-price').textContent = price == null ? '' : 'This save costs ₱' + Number(price).toFixed(2) + '. Bundles may also be available.';
+  setPayDialogMessage('', false);
+  $('pay-gcash-checkout').textContent = 'Pay with GCash';
+  $('pay-dialog-price').textContent = price == null ? '' : 'Single save: ₱' + Number(price).toFixed(2) + '. Choose a bundle for its listed price.';
   const bundleSelect = $('pay-bundle-select');
   bundleSelect.replaceChildren(new Option('Single save', ''));
+  $('pay-dialog-confirm').classList.remove('hidden');
+  $('pay-gcash-checkout').classList.remove('hidden');
+  $('pay-finish-save').classList.add('hidden');
+  $('pay-dialog-confirm').disabled = false;
+  $('pay-gcash-checkout').disabled = false;
   try {
     const data = await PaySystem.load();
-    const settings = data.settings || {};
-    const qrArea = $('pay-qr-area');
-    const qrImage = $('pay-qr-image');
-    const qrLabel = $('pay-qr-label');
-    const paymentLink = $('pay-payment-link');
-    if (settings.payment_qr_url) {
-      qrImage.src = settings.payment_qr_url;
-      qrLabel.textContent = settings.payment_qr_label || 'Scan to pay';
-      qrArea.classList.remove('hidden');
-    } else {
-      qrImage.removeAttribute('src');
-      qrArea.classList.add('hidden');
-    }
-    if (settings.payment_link) {
-      try {
-        const url = new URL(settings.payment_link);
-        if (url.protocol !== 'https:') throw new Error('Invalid payment link');
-        paymentLink.href = url.href;
-        paymentLink.classList.remove('hidden');
-      } catch (err) {
-        paymentLink.removeAttribute('href');
-        paymentLink.classList.add('hidden');
-        console.error('Ignoring invalid payment link:', err);
-      }
-    } else {
-      paymentLink.removeAttribute('href');
-      paymentLink.classList.add('hidden');
-    }
-    data.bundles.filter((bundle) => bundle.media_type === mediaType &&
+    checkoutBundles = data.bundles.filter((bundle) => bundle.media_type === mediaType &&
       (!bundle.event_id || bundle.event_id === PaySystem.activeEventId()))
-      .forEach((bundle) => bundleSelect.add(new Option(
+    checkoutBundles.forEach((bundle) => bundleSelect.add(new Option(
         bundle.name + ' · ' + bundle.quantity + ' saves for ₱' + Number(bundle.price).toFixed(2),
         bundle.id
       )));
   } catch (err) {
     console.error('Could not load save bundles:', err);
-    $('pay-dialog-message').textContent = 'Bundles could not load. A voucher or single cashier approval may still be used.';
+    setPayDialogMessage('Bundles could not load. Try a counter voucher or reload before paying.', true);
   }
   if (!payDialog.open) payDialog.showModal();
 }
 
 async function saveWithEntitlement(mediaType, blob, filename) {
   if (!blob) return;
+  const requestId = crypto.randomUUID();
   try {
-    const result = await PaySystem.claim(mediaType);
+    const result = await PaySystem.claim(mediaType, requestId);
     await refreshPayBadge();
     if (result.allowed) {
       downloadBlob(blob, filename);
@@ -1801,6 +1827,7 @@ async function saveWithEntitlement(mediaType, blob, filename) {
     }
     if (result.reason === 'payment_required') {
       await openPaidSaveDialog(mediaType, blob, filename, result.price);
+      pendingPaidSave.claimRequestId = requestId;
       return;
     }
     throw new Error('Save authorization was not granted.');
@@ -1812,28 +1839,29 @@ async function saveWithEntitlement(mediaType, blob, filename) {
 
 $('pay-dialog-cancel').addEventListener('click', () => {
   pendingPaidSave = null;
+  checkoutPollToken++;
   payDialog.close();
 });
 $('pay-dialog').addEventListener('click', (event) => {
   if (event.target === payDialog) {
     pendingPaidSave = null;
+    checkoutPollToken++;
     payDialog.close();
   }
 });
 $('pay-dialog-confirm').addEventListener('click', async () => {
   if (!pendingPaidSave) return;
   const voucher = $('pay-voucher-input').value.trim();
-  const pin = $('pay-pin-input').value.trim();
-  if (!!voucher === !!pin) {
-    $('pay-dialog-message').textContent = 'Enter a voucher code or have the cashier enter a PIN.';
+  if (!voucher) {
+    setPayDialogMessage('Enter a counter voucher code, or use Pay with GCash.', true);
     return;
   }
   const button = $('pay-dialog-confirm');
   button.disabled = true;
-  $('pay-dialog-message').textContent = 'Verifying…';
+  setPayDialogMessage('Verifying…', false);
   try {
     const result = await PaySystem.purchase(pendingPaidSave.mediaType, {
-      voucher, pin, bundleId: voucher ? '' : $('pay-bundle-select').value
+      voucher, bundleId: ''
     });
     if (!result.allowed) throw new Error(result.message || 'Payment was not approved.');
     const save = pendingPaidSave;
@@ -1843,8 +1871,121 @@ $('pay-dialog-confirm').addEventListener('click', async () => {
     if (save.mediaType === 'strip') Fx.confetti({ count: 90 });
     await refreshPayBadge();
   } catch (err) {
-    $('pay-dialog-message').textContent = err.message || 'Payment could not be verified. Please try again.';
+    setPayDialogMessage(err.message || 'Payment could not be verified. Please try again.', true);
   } finally {
+    button.disabled = false;
+  }
+});
+$('pay-bundle-select').addEventListener('change', () => {
+  const selected = checkoutBundles.find((bundle) => bundle.id === $('pay-bundle-select').value);
+  if (selected) {
+    $('pay-dialog-price').textContent = selected.name + ': ₱' + Number(selected.price).toFixed(2) +
+      ' · ' + selected.quantity + ' saves credited after payment.';
+  } else if (pendingPaidSave && pendingPaidSave.price != null) {
+    $('pay-dialog-price').textContent = 'Single save: ₱' + Number(pendingPaidSave.price).toFixed(2) +
+      '. Choose a bundle for its listed price.';
+  }
+});
+
+async function monitorCheckout(orderId, token) {
+  let connectionFailures = 0;
+  for (let attempt = 0; attempt < 450; attempt++) {
+    if (token !== checkoutPollToken || !pendingPaidSave) return;
+    try {
+      const status = await PaySystem.paymentStatus(orderId);
+      connectionFailures = 0;
+      if (status.status === 'paid') {
+        pendingPaidSave.paidOrder = status;
+        setPayDialogMessage(
+          'Payment confirmed! ' + status.quantity + ' ' + status.media_type.toUpperCase() +
+          ' save' + (status.quantity === 1 ? '' : 's') + ' credited to this device. Preparing your save…',
+          false
+        );
+        $('pay-gcash-checkout').classList.add('hidden');
+        $('pay-dialog-confirm').classList.add('hidden');
+        $('pay-finish-save').classList.remove('hidden');
+        $('pay-finish-save').disabled = false;
+        $('pay-finish-save').textContent = 'Finish save';
+        return;
+      }
+      if (status.status === 'pending' && status.payment_attempt_status === 'failed') {
+        setPayDialogMessage('Payment failed. Your GCash payment was declined. Retry the same secure checkout when ready.', true);
+        $('pay-gcash-checkout').textContent = 'Retry GCash checkout';
+        $('pay-gcash-checkout').disabled = false;
+        return;
+      }
+      if (status.status === 'failed' || status.status === 'expired') {
+        setPayDialogMessage(status.status === 'expired'
+          ? 'Payment did not complete before checkout expired. Please try again.'
+          : 'This checkout did not complete. You can try GCash checkout again.', true);
+        $('pay-gcash-checkout').textContent = 'Retry GCash checkout';
+        $('pay-gcash-checkout').disabled = false;
+        return;
+      }
+    } catch (err) {
+      console.error('Could not check PayMongo payment:', err);
+      connectionFailures += 1;
+      if (connectionFailures >= 4) {
+        setPayDialogMessage('Connection issue, please retry. Reopening checkout will reuse this order.', true);
+        $('pay-gcash-checkout').textContent = 'Retry GCash checkout';
+        $('pay-gcash-checkout').disabled = false;
+        return;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  if (token === checkoutPollToken) {
+    setPayDialogMessage('Payment confirmation timed out. If you already paid, check the status before retrying; reopening will reuse this checkout.', true);
+    $('pay-gcash-checkout').textContent = 'Check / reopen GCash checkout';
+    $('pay-gcash-checkout').disabled = false;
+  }
+}
+
+$('pay-gcash-checkout').addEventListener('click', async () => {
+  if (!pendingPaidSave) return;
+  const checkoutWindow = window.open('about:blank', '_blank');
+  if (!checkoutWindow) {
+    setPayDialogMessage('Allow pop-ups for this booth to open secure PayMongo checkout.', true);
+    return;
+  }
+  checkoutWindow.opener = null;
+  const button = $('pay-gcash-checkout');
+  button.disabled = true;
+  setPayDialogMessage('Starting secure PayMongo GCash checkout…', false);
+  try {
+    const result = await PaySystem.createCheckout(pendingPaidSave.mediaType, $('pay-bundle-select').value);
+    if (!result.checkout_url || !result.order_id) throw new Error('PayMongo did not return a checkout link.');
+    pendingPaidSave.orderId = result.order_id;
+    checkoutWindow.location.replace(result.checkout_url);
+    setPayDialogMessage('Complete payment in the PayMongo tab. This booth will unlock the selected save after payment is verified.', false);
+    const token = ++checkoutPollToken;
+    monitorCheckout(result.order_id, token);
+  } catch (err) {
+    checkoutWindow.close();
+    button.disabled = false;
+    setPayDialogMessage(err.message || 'Could not start GCash checkout.', true);
+  }
+});
+
+$('pay-finish-save').addEventListener('click', async () => {
+  if (!pendingPaidSave || !pendingPaidSave.paidOrder) return;
+  const button = $('pay-finish-save');
+  button.disabled = true;
+  setPayDialogMessage('Unlocking your paid save…', false);
+  try {
+    const result = await PaySystem.claim(pendingPaidSave.mediaType, pendingPaidSave.claimRequestId);
+    if (!result.allowed) throw new Error('Your paid save credit is not ready yet. Please wait and retry.');
+    const save = pendingPaidSave;
+    pendingPaidSave = null;
+    checkoutPollToken++;
+    payDialog.close();
+    downloadBlob(save.blob, save.filename);
+    if (save.mediaType === 'strip') Fx.confetti({ count: 90 });
+    const remaining = Number(save.paidOrder.quantity) - 1;
+    toast(remaining > 0 ? 'Saved! ' + remaining + ' bundle save' + (remaining === 1 ? '' : 's') + ' remaining on this device.' : 'Payment confirmed and save downloaded.');
+    await refreshPayBadge();
+  } catch (err) {
+    setPayDialogMessage(err.message || 'Could not retrieve your paid save yet. Please retry.', true);
     button.disabled = false;
   }
 });
@@ -1929,7 +2070,7 @@ newStripBtn.addEventListener('click', () => {
   boothScreen.classList.remove('hidden');
 });
 
-homeBtn.addEventListener('click', () => location.reload());
+homeBtn.addEventListener('click', showWelcomeScreen);
 
 galleryBtn.addEventListener('click', async () => {
   boothScreen.classList.add('hidden');

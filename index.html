@@ -11,6 +11,8 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lobster&display=swap">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="ui.css">
+  <link rel="stylesheet" href="welcome-pages.css">
+  <link rel="stylesheet" href="booth-pages.css">
 </head>
 <body>
 
@@ -67,13 +69,93 @@
   <a id="admin-link" hidden></a>
 
   <div id="welcome-screen">
-    <div class="welcome-pills" aria-hidden="true">
-      <span>📸 Instant strips</span>
-      <span>✨ Sweet memories</span>
-    </div>
-    <h1>Timeless Strips</h1>
-    <p data-i18n="welcome.tag">Get ready to strike a pose.</p>
-    <button id="start-btn" data-i18n="welcome.start">Start</button>
+    <header class="site-header">
+      <a class="site-brand" href="#" data-page="home" aria-label="Timeless Strips home">Timeless Strips</a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <button type="button" class="site-nav-link is-active" data-page="home" aria-current="page">Home</button>
+        <button type="button" class="site-nav-link" data-start-booth>Photobooth</button>
+        <button type="button" class="site-nav-link" data-page="prices">Prices</button>
+        <button type="button" class="site-nav-link" data-page="feedback">Feedback</button>
+      </nav>
+    </header>
+
+    <main class="welcome-content">
+      <section class="welcome-page home-page" data-page-panel="home">
+        <div class="home-hero">
+          <span class="decorative-strip strip-left" aria-hidden="true"><i></i><i></i><i></i><i></i><b>Timeless Strips</b></span>
+          <div class="hero-copy">
+            <div class="welcome-pills" aria-hidden="true"><span>Instant strips</span><span>Sweet memories</span></div>
+            <h1>Timeless Strips</h1>
+            <p class="hero-tagline">Get ready to strike a pose.</p>
+            <div class="hero-actions">
+              <button id="start-btn" class="pill-button pill-primary" data-i18n="welcome.start">Start <span aria-hidden="true">→</span></button>
+              <button type="button" class="pill-button pill-outline" data-page="prices">Prices</button>
+              <button type="button" class="pill-button pill-outline" data-page="feedback">Feedback</button>
+            </div>
+          </div>
+          <span class="decorative-strip strip-right" aria-hidden="true"><i></i><i></i><i></i><i></i><b>Timeless Strips</b></span>
+        </div>
+
+        <section class="home-section how-section">
+          <p class="eyebrow">How it works</p>
+          <h2>Three steps to a keepsake.</h2>
+          <div class="steps-grid">
+            <article class="step-card"><span class="step-number">01</span><span class="step-icon" aria-hidden="true">▤</span><h3>Pick your frame</h3><p>Choose the paper style for your strip: peach, lilac, rose, butter or midnight.</p></article>
+            <article class="step-card"><span class="step-number">02</span><span class="step-icon" aria-hidden="true">◎</span><h3>Strike four poses</h3><p>Press the shutter once per pose. Four frames make one strip, so make each one count.</p></article>
+            <article class="step-card"><span class="step-number">03</span><span class="step-icon" aria-hidden="true">♡</span><h3>Keep it</h3><p>Your finished strip is ready to save or print. Start over any time to try a new set.</p></article>
+          </div>
+        </section>
+
+        <section class="home-section frames-section">
+          <p class="eyebrow">The frames</p>
+          <h2>Five papers, one for every mood.</h2>
+          <div class="frame-gallery" aria-label="Available photo strip frame colors">
+            <div class="frame-sample peach"><span></span><span></span><span></span><b>Timeless Strips</b><strong>Peach</strong></div>
+            <div class="frame-sample lilac"><span></span><span></span><span></span><b>Timeless Strips</b><strong>Lilac</strong></div>
+            <div class="frame-sample rose"><span></span><span></span><span></span><b>Timeless Strips</b><strong>Rose</strong></div>
+            <div class="frame-sample butter"><span></span><span></span><span></span><b>Timeless Strips</b><strong>Butter</strong></div>
+            <div class="frame-sample midnight"><span></span><span></span><span></span><b>Timeless Strips</b><strong>Midnight</strong></div>
+          </div>
+        </section>
+
+        <section class="home-cta">
+          <span class="sparkle sparkle-one" aria-hidden="true">✦</span><span class="sparkle sparkle-two" aria-hidden="true">✦</span>
+          <h2>Your turn.</h2><p>Four poses. One strip. Ready when you are.</p>
+          <button type="button" class="pill-button pill-light" data-start-booth>Start <span aria-hidden="true">→</span></button>
+        </section>
+      </section>
+
+      <section class="welcome-page prices-page hidden" data-page-panel="prices" aria-labelledby="prices-title">
+        <div class="page-heading"><p class="eyebrow">Prices</p><h1 id="prices-title">Keep the moment.</h1><p>Pay as you go for strips or GIFs, or take the monthly pass.<br class="desktop-break"> Every one comes in all five frames.</p></div>
+        <div class="format-toggle" role="group" aria-label="Choose a product format">
+          <button type="button" class="format-button is-active" data-format="pictures" aria-pressed="true">Pictures</button>
+          <button type="button" class="format-button" data-format="gifs" aria-pressed="false">GIFs</button>
+        </div>
+        <div class="pricing-grid" data-pricing-content>
+          <article class="price-card"><div class="product-art product-single" aria-hidden="true"><span></span><span></span><span></span></div><h2>Single Strip</h2><p>One strip, four poses, your pick of frame.</p><div class="price-line"><strong>₱15</strong><span>for 1 strip</span></div><ul><li>One four-pose strip</li><li>Any of the five frames</li><li>Digital download</li><li>Print-ready file</li></ul><button type="button" class="pill-button price-choose" data-plan-id="single_strip">Pay &amp; Start · ₱15</button></article>
+          <article class="price-card price-featured"><span class="popular-tag">Most loved</span><div class="product-art product-double" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div><h2>Double Strip</h2><p>Two strips: one for you, one to share.</p><div class="price-line"><strong>₱25</strong><span>for 2 strips</span><span class="saving-tag">Save ₱5</span></div><ul><li>Two four-pose strips</li><li>Mix and match frames</li><li>Digital download</li><li>Print-ready files</li></ul><button type="button" class="pill-button price-choose" data-plan-id="double_strip">Pay &amp; Start · ₱25</button></article>
+          <article class="price-card"><div class="product-art product-quad" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div><h2>Quad + GIF</h2><p>Four strips and a looping GIF of your best take.</p><div class="price-line"><strong>₱50</strong><span>for 4 strips + 1 GIF</span></div><span class="saving-tag card-saving">Save ₱10</span><ul><li>Four four-pose strips</li><li>1 looping GIF included</li><li>Mix and match frames</li><li>Digital download</li></ul><button type="button" class="pill-button price-choose" data-plan-id="quad_gif">Pay &amp; Start · ₱50</button></article>
+        </div>
+        <div class="gif-coming hidden" data-gif-message><span class="eyebrow">Coming soon</span><h2>Standalone GIF packs are on the way.</h2><p>The Quad + GIF plan already includes one GIF. More GIF-only prices are coming soon; picture strip prices are available in the Pictures tab.</p><button type="button" class="pill-button pill-primary" data-format="pictures">View picture prices</button></div>
+        <section class="monthly-card"><div class="monthly-copy"><span class="monthly-tag">▣ Monthly pass</span><h2>Everything,<br>unlocked.</h2><p>One pass unlocks unlimited strip and GIF saves for 30 days. No bundles to pick, just walk in and pose.</p><div class="price-line"><strong>₱150</strong><span>for 1 month</span></div><button type="button" class="pill-button pill-light" data-plan-id="monthly_pass">Pay &amp; Start · ₱150</button></div><div class="monthly-perks"><h3>What you get</h3><ul><li>Unlimited strips and GIF saves for 30 days</li><li>All five frames</li><li>Start the booth after payment confirmation</li><li>Valid for 1 month</li></ul></div></section>
+      </section>
+
+      <section class="welcome-page feedback-page hidden" data-page-panel="feedback" aria-labelledby="feedback-title">
+        <div class="page-heading"><p class="eyebrow">Feedback</p><h1 id="feedback-title">Tell us how it went.</h1><p>Rate the photobooth and leave a note for the next<br class="desktop-break"> person in line.</p></div>
+        <div class="feedback-layout">
+          <form class="review-form" id="review-form">
+            <h2>Leave a review</h2>
+            <label for="review-name">Your name</label><input id="review-name" name="name" type="text" maxlength="40" placeholder="Optional" autocomplete="name">
+            <fieldset class="rating-field"><legend>Your rating</legend><div class="star-picker" role="group" aria-label="Choose a rating from one to five stars"><button type="button" data-rating="1" aria-label="1 star" aria-pressed="false">☆</button><button type="button" data-rating="2" aria-label="2 stars" aria-pressed="false">☆</button><button type="button" data-rating="3" aria-label="3 stars" aria-pressed="false">☆</button><button type="button" data-rating="4" aria-label="4 stars" aria-pressed="false">☆</button><button type="button" data-rating="5" aria-label="5 stars" aria-pressed="false">☆</button></div><small id="rating-hint">Tap a star to rate</small></fieldset>
+            <label for="review-message">Your feedback</label><textarea id="review-message" name="feedback" rows="4" maxlength="500" required></textarea>
+            <p class="review-status" id="review-status" role="status" aria-live="polite"></p>
+            <button type="submit" class="pill-button pill-primary">Post feedback</button>
+          </form>
+          <div class="feedback-results"><section class="rating-summary" aria-label="Customer rating summary"><div class="rating-score"><strong id="average-rating">4.7</strong><span id="average-stars" aria-label="4.7 out of 5 stars">★★★★★</span><small id="rating-count">3 ratings</small></div><div class="rating-bars" id="rating-bars" aria-label="Rating breakdown"></div></section><section class="recent-reviews"><h2>Recent feedback</h2><div id="review-list" aria-live="polite"></div></section></div>
+        </div>
+      </section>
+      <footer class="site-footer">Timeless Strips<span aria-hidden="true">✦</span></footer>
+    </main>
   </div>
 
   <!-- Template picker (between Start and Camera) -->
@@ -85,8 +167,15 @@
 
   <!-- ============ 2. CAMERA ============ -->
   <div id="booth-screen" class="hidden">
-    <h1 class="brand" data-i18n="booth.title">Timeless Strips</h1>
-    <p id="template-label"></p>
+    <header class="booth-header">
+      <button id="booth-home-btn" class="booth-home-btn" type="button" data-i18n="btn.home">🏠 Home</button>
+      <div class="booth-heading">
+        <p class="booth-eyebrow">Your moment starts here</p>
+        <h1 class="brand" data-i18n="booth.title">Timeless Strips</h1>
+        <p id="template-label"></p>
+      </div>
+      <span class="booth-live-label"><i aria-hidden="true"></i> Photo studio</span>
+    </header>
     <div class="camera-workspace">
       <div id="video-wrap">
         <video id="camera" autoplay playsinline muted></video>
@@ -130,11 +219,14 @@
       <p id="backdrop-status" class="edit-hint" aria-live="polite">Choose a backdrop to replace the background behind you.</p>
     </section>
 
-    <br>
-    <button id="strip-btn">🎞️ Capture Strip (4 Photos)</button>
-    <p class="capture-output-note">One capture creates a print-ready photo strip and an animated GIF strip.</p>
-    <button id="change-template-btn" data-i18n="btn.change">🖼️ Change Template</button>
-    <button id="gallery-btn" data-i18n="btn.gallery">🗂️ Gallery</button>
+    <div class="booth-actions">
+      <button id="strip-btn">🎞️ Capture Strip (4 Photos)</button>
+      <p class="capture-output-note">One capture creates a print-ready photo strip and an animated GIF strip.</p>
+      <div class="booth-secondary-actions">
+        <button id="change-template-btn" data-i18n="btn.change">🖼️ Change Template</button>
+        <button id="gallery-btn" data-i18n="btn.gallery">🗂️ Gallery</button>
+      </div>
+    </div>
   </div>
 
   <!-- ============ 3. EDITING ============ -->
@@ -219,20 +311,10 @@
 
   <dialog id="pay-dialog" class="pay-dialog" aria-labelledby="pay-dialog-title">
     <h3 id="pay-dialog-title">Save your memory</h3>
-    <p id="pay-dialog-copy">Your free saves are used. Use a counter voucher or ask the cashier to approve this save.</p>
+    <p id="pay-dialog-copy">Your free saves are used. Pay securely with GCash to unlock the selected save or bundle.</p>
     <p id="pay-dialog-price" class="pay-dialog-price"></p>
-    <section id="pay-qr-area" class="pay-qr-guest hidden">
-      <p id="pay-qr-label" class="pay-qr-label"></p>
-      <a id="pay-payment-link" class="hidden" target="_blank" rel="noopener noreferrer">Open payment link</a>
-      <img id="pay-qr-image" alt="Scan to pay for this save">
-      <p class="pay-qr-note">After paying, ask the cashier to enter the staff PIN or use your counter voucher.</p>
-    </section>
     <label>Voucher code
       <input id="pay-voucher-input" type="text" autocomplete="off" autocapitalize="characters" placeholder="XXXX-XXXX-XXXX">
-    </label>
-    <p class="pay-or">or ask the cashier</p>
-    <label>Staff PIN
-      <input id="pay-pin-input" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="Cashier enters PIN">
     </label>
     <label>Bundle (optional)
       <select id="pay-bundle-select"><option value="">Single save</option></select>
@@ -240,7 +322,24 @@
     <p id="pay-dialog-message" role="status" class="pay-dialog-message"></p>
     <div class="pay-dialog-actions">
       <button id="pay-dialog-cancel" type="button">Not now</button>
-      <button id="pay-dialog-confirm" type="button">Confirm &amp; save</button>
+      <button id="pay-dialog-confirm" type="button">Redeem voucher</button>
+      <button id="pay-gcash-checkout" type="button">Pay with GCash</button>
+      <button id="pay-finish-save" type="button" class="hidden">Finish save</button>
+    </div>
+  </dialog>
+
+  <dialog id="plan-payment-dialog" class="plan-payment-dialog" aria-labelledby="plan-payment-title">
+    <div class="plan-payment-content">
+      <span id="plan-payment-icon" class="plan-payment-icon" aria-hidden="true">✨</span>
+      <p class="eyebrow">Secure GCash checkout</p>
+      <h2 id="plan-payment-title">Starting your checkout</h2>
+      <p id="plan-payment-product" class="plan-payment-product"></p>
+      <p id="plan-payment-message" class="plan-payment-message" role="status" aria-live="polite">Connecting to PayMongo…</p>
+      <div class="plan-payment-actions">
+        <button id="plan-payment-check" type="button" class="pill-button price-choose hidden">Check payment status</button>
+        <button id="plan-payment-retry" type="button" class="pill-button price-choose hidden">Try checkout again</button>
+        <button id="plan-payment-close" type="button" class="pill-button pill-outline">Close</button>
+      </div>
     </div>
   </dialog>
 
@@ -271,6 +370,7 @@
   <script src="pay-system.js"></script>
   <script src="face-engine.js"></script>
   <script src="script.js"></script>
+  <script src="welcome-pages.js"></script>
 
   
 </body>

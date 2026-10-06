@@ -73,13 +73,14 @@
     return eventFormat === false || (eventFormat == null && !globalFormat);
   }
 
-  async function claim(mediaType) {
+  async function claim(mediaType, requestId) {
     if (!configured()) return { allowed: true, reason: 'unconfigured' };
     try {
-      return await rpc('ts_pay_consume_save', {
+      return await rpc('ts_pay_consume_save_once', {
         p_event_id: activeEventId(),
         p_device_id: DeviceTracker.deviceId,
-        p_media_type: mediaType
+        p_media_type: mediaType,
+        p_request_id: requestId || crypto.randomUUID()
       });
     } catch (err) {
       if (definitelyFreeOffline(mediaType)) return { allowed: true, reason: 'offline-free' };
@@ -94,13 +95,42 @@
       p_device_id: DeviceTracker.deviceId,
       p_media_type: mediaType,
       p_voucher: details.voucher || null,
-      p_staff_pin: details.pin || null,
+      p_staff_pin: null,
       p_bundle_id: details.bundleId || null
     });
   }
 
+  function createCheckout(mediaType, bundleId) {
+    if (!configured()) throw new Error('Payment service is not configured.');
+    return DeviceTracker.invokeFunction('create-gcash-checkout', {
+      lib: lib(),
+      device_id: DeviceTracker.deviceId,
+      event_id: activeEventId(),
+      media_type: mediaType,
+      bundle_id: bundleId || ''
+    });
+  }
+
+  function createPlanCheckout(planId) {
+    if (!configured()) throw new Error('Payment service is not configured.');
+    return DeviceTracker.invokeFunction('create-gcash-checkout', {
+      lib: lib(),
+      device_id: DeviceTracker.deviceId,
+      event_id: activeEventId(),
+      plan_id: planId
+    });
+  }
+
+  function paymentStatus(orderId) {
+    if (!configured()) throw new Error('Payment service is not configured.');
+    return DeviceTracker.invokeFunction('payment-status', {
+      order_id: orderId,
+      device_id: DeviceTracker.deviceId
+    });
+  }
+
   window.PaySystem = {
-    configured, lib, activeEventId, setActiveEvent, load, status, claim, purchase,
+    configured, lib, activeEventId, setActiveEvent, load, status, claim, purchase, createCheckout, createPlanCheckout, paymentStatus,
     get deviceId() { return typeof DeviceTracker !== 'undefined' ? DeviceTracker.deviceId : ''; }
   };
 })();

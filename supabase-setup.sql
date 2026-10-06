@@ -255,12 +255,28 @@ create table if not exists public.ts_pay_sales (
   event_name text not null default 'No event',
   device_id text,
   media_type text not null check (media_type in ('gif','strip')),
-  quantity integer not null check (quantity > 0),
+  quantity integer not null check (quantity >= 0),
+  gif_quantity integer not null default 0 check (gif_quantity >= 0),
+  plan_id text,
+  product_name text not null default '',
+  payment_id text,
+  test_mode boolean not null default false,
   amount numeric(10,2) not null check (amount >= 0),
-  payment_method text not null check (payment_method in ('cashier_pin','counter_voucher')),
+  payment_method text not null check (payment_method in ('cashier_pin','counter_voucher','paymongo_test','paymongo_gcash')),
   description text not null default '',
   created_at bigint not null default (extract(epoch from now()) * 1000)::bigint
 );
+alter table public.ts_pay_sales drop constraint if exists ts_pay_sales_quantity_check;
+alter table public.ts_pay_sales drop constraint if exists ts_pay_sales_quantity_nonnegative;
+alter table public.ts_pay_sales add constraint ts_pay_sales_quantity_nonnegative check (quantity >= 0);
+alter table public.ts_pay_sales add column if not exists gif_quantity integer not null default 0 check (gif_quantity >= 0);
+alter table public.ts_pay_sales add column if not exists plan_id text;
+alter table public.ts_pay_sales add column if not exists product_name text not null default '';
+alter table public.ts_pay_sales add column if not exists payment_id text;
+alter table public.ts_pay_sales add column if not exists test_mode boolean not null default false;
+alter table public.ts_pay_sales drop constraint if exists ts_pay_sales_payment_method_check;
+alter table public.ts_pay_sales add constraint ts_pay_sales_payment_method_check
+  check (payment_method in ('cashier_pin','counter_voucher','paymongo_test','paymongo_gcash'));
 create index if not exists ts_pay_sales_lib_date on public.ts_pay_sales (lib, created_at);
 create index if not exists ts_pay_sales_lib_event on public.ts_pay_sales (lib, event_id, created_at);
 alter table public.ts_pay_sales enable row level security;
@@ -307,6 +323,84 @@ create table if not exists public.ts_pay_credits (
 );
 create index if not exists ts_pay_credits_lookup on public.ts_pay_credits (lib, event_id, device_id, media_type, remaining);
 alter table public.ts_pay_credits enable row level security;
+
+create table if not exists public.ts_pay_orders (
+  id text primary key,
+  lib text not null,
+  event_id text,
+  event_name text not null,
+  device_id text not null,
+  media_type text not null check (media_type in ('gif','strip')),
+  bundle_id text,
+  plan_id text,
+  product_name text not null default '',
+  quantity integer not null check (quantity > 0),
+  gif_quantity integer not null default 0 check (gif_quantity >= 0),
+  access_days integer not null default 0 check (access_days >= 0),
+  amount numeric(10,2) not null check (amount > 0),
+  currency text not null default 'PHP' check (currency = 'PHP'),
+  status text not null default 'pending' check (status in ('pending','paid','failed','expired')),
+  last_payment_status text not null default 'pending' check (last_payment_status in ('pending','failed','paid')),
+  reference_number text not null unique,
+  checkout_session_id text unique,
+  payment_id text,
+  test_mode boolean not null default true,
+  created_at bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  paid_at bigint
+);
+alter table public.ts_pay_orders add column if not exists plan_id text;
+alter table public.ts_pay_orders add column if not exists product_name text not null default '';
+alter table public.ts_pay_orders add column if not exists gif_quantity integer not null default 0 check (gif_quantity >= 0);
+alter table public.ts_pay_orders add column if not exists access_days integer not null default 0 check (access_days >= 0);
+alter table public.ts_pay_orders add column if not exists last_payment_status text not null default 'pending'
+  check (last_payment_status in ('pending','failed','paid'));
+create index if not exists ts_pay_orders_device_status on public.ts_pay_orders (lib, device_id, status, created_at);
+create table if not exists public.ts_pay_memberships (
+  lib text not null,
+  event_id text not null,
+  device_id text not null,
+  access_until bigint not null,
+  updated_at bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  primary key (lib, event_id, device_id)
+);
+create index if not exists ts_pay_memberships_lookup
+  on public.ts_pay_memberships (lib, event_id, device_id, access_until);
+alter table public.ts_pay_memberships enable row level security;
+drop policy if exists "pay memberships admin read" on public.ts_pay_memberships;
+create policy "pay memberships admin read" on public.ts_pay_memberships
+  for select to authenticated using (public.ts_is_admin());
+alter table public.ts_pay_orders enable row level security;
+drop policy if exists "pay orders admin read" on public.ts_pay_orders;
+create policy "pay orders admin read" on public.ts_pay_orders for select to authenticated
+  using (public.ts_is_admin());
+revoke all on public.ts_pay_orders from anon, authenticated;
+grant select on public.ts_pay_orders to authenticated;
+grant all on public.ts_pay_orders to service_role;
+
+create table if not exists public.ts_pay_save_claims (
+  lib text not null,
+  device_id text not null,
+  request_id text not null,
+  result jsonb not null,
+  created_at bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  primary key (lib, device_id, request_id)
+);
+alter table public.ts_pay_save_claims enable row level security;
+revoke all on public.ts_pay_save_claims from anon, authenticated;
+grant all on public.ts_pay_save_claims to service_role;
+
+do $$
+declare c text;
+begin
+  for c in select conname from pg_constraint
+           where conrelid = 'public.ts_pay_sales'::regclass and contype = 'c'
+             and pg_get_constraintdef(oid) ilike '%payment_method%' loop
+    execute format('alter table public.ts_pay_sales drop constraint %I', c);
+  end loop;
+  alter table public.ts_pay_sales
+    add constraint ts_pay_sales_method_check
+    check (payment_method in ('cashier_pin','counter_voucher','paymongo_gcash','paymongo_test'));
+end $$;
 
 create or replace function public.ts_pay_set_pin(p_lib text, p_pin text)
 returns void language plpgsql security definer set search_path = public, extensions as $$
@@ -364,6 +458,7 @@ declare
   v_strip_paid boolean := false;
   v_gif_price numeric(10,2) := 0;
   v_strip_price numeric(10,2) := 0;
+  v_pass_until bigint := 0;
 begin
   select enabled, free_saves, gif_paid, strip_paid, gif_price, strip_price
     into v_enabled, v_free, v_gif_paid, v_strip_paid, v_gif_price, v_strip_price
@@ -383,10 +478,14 @@ begin
   select free_saves into v_used from public.ts_pay_usage
    where lib = p_lib and event_id = v_event and device_id = p_device_id;
   v_used := coalesce(v_used, 0);
+  select max(access_until) into v_pass_until from public.ts_pay_memberships
+   where lib = p_lib and event_id in (v_event, 'default') and device_id = p_device_id;
   return jsonb_build_object(
     'event_id', nullif(p_event_id, ''), 'enabled', v_enabled,
     'free_remaining', greatest(v_free - v_used, 0), 'free_total', greatest(v_free, 0),
     'gif_paid', v_gif_paid, 'strip_paid', v_strip_paid,
+    'monthly_pass_until', coalesce(v_pass_until, 0),
+    'monthly_pass_active', coalesce(v_pass_until, 0) > (extract(epoch from now()) * 1000)::bigint,
     'gif_price', v_gif_price, 'strip_price', v_strip_price
   );
 end $$;
@@ -407,6 +506,7 @@ declare
   v_strip_price numeric(10,2) := 0;
   v_paid boolean := false;
   v_price numeric(10,2) := 0;
+  v_pass_until bigint := 0;
   v_item record;
   v_now bigint := (extract(epoch from now()) * 1000)::bigint;
 begin
@@ -429,9 +529,27 @@ begin
       into v_charge_mode, v_free, v_paid, v_price
       from public.ts_pay_events where lib = p_lib and id = v_event;
   end if;
+  select max(access_until) into v_pass_until from public.ts_pay_memberships
+   where lib = p_lib and event_id in (v_event, 'default') and device_id = p_device_id;
+  if coalesce(v_pass_until, 0) > v_now then
+    return jsonb_build_object('allowed', true, 'reason', 'monthly_pass',
+      'free_remaining', greatest(v_free, 0), 'free_total', greatest(v_free, 0),
+      'access_until', v_pass_until);
+  end if;
   v_paid := v_enabled and v_paid and v_charge_mode <> 'free';
   if not v_paid then
     return jsonb_build_object('allowed', true, 'reason', 'free', 'free_remaining', greatest(v_free, 0), 'free_total', greatest(v_free, 0));
+  end if;
+
+  update public.ts_pay_credits set remaining = remaining - 1
+   where id = (
+     select id from public.ts_pay_credits
+      where lib = p_lib and event_id = v_event and device_id = p_device_id
+        and media_type = p_media_type and remaining > 0
+      order by created_at, id limit 1 for update
+   ) returning * into v_item;
+  if found then
+    return jsonb_build_object('allowed', true, 'reason', 'paid', 'free_remaining', greatest(v_free, 0), 'free_total', greatest(v_free, 0));
   end if;
 
   insert into public.ts_pay_usage(lib, event_id, device_id, free_saves)
@@ -443,16 +561,6 @@ begin
     return jsonb_build_object('allowed', true, 'reason', 'free', 'free_remaining', greatest(v_free - v_used, 0), 'free_total', greatest(v_free, 0));
   end if;
 
-  update public.ts_pay_credits set remaining = remaining - 1
-   where id = (
-     select id from public.ts_pay_credits
-      where lib = p_lib and event_id = v_event and device_id = p_device_id
-        and media_type = p_media_type and remaining > 0
-      order by created_at, id limit 1 for update
-   ) returning * into v_item;
-  if found then
-    return jsonb_build_object('allowed', true, 'reason', 'paid', 'free_remaining', 0, 'free_total', greatest(v_free, 0));
-  end if;
   return jsonb_build_object('allowed', false, 'reason', 'payment_required',
     'free_remaining', 0, 'free_total', greatest(v_free, 0), 'price', v_price);
 end $$;
@@ -562,6 +670,106 @@ begin
   end if;
   return jsonb_build_object('allowed', true, 'reason', 'paid', 'free_remaining', 0, 'free_total', v_free);
 end $$;
+create or replace function public.ts_pay_consume_save_once(
+  p_lib text, p_event_id text, p_device_id text, p_media_type text, p_request_id text
+) returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_result jsonb;
+begin
+  if p_request_id is null or length(p_request_id) > 100 then raise exception 'Invalid save request id'; end if;
+  select result into v_result from public.ts_pay_save_claims
+   where lib = p_lib and device_id = p_device_id and request_id = p_request_id;
+  if found then return v_result; end if;
+  v_result := public.ts_pay_consume_save(p_lib, p_event_id, p_device_id, p_media_type);
+  if coalesce((v_result ->> 'allowed')::boolean, false) then
+    insert into public.ts_pay_save_claims(lib, device_id, request_id, result)
+    values (p_lib, p_device_id, p_request_id, v_result);
+  end if;
+  return v_result;
+end $$;
+grant execute on function public.ts_pay_consume_save_once(text,text,text,text,text) to anon, authenticated;
+
+create or replace function public.ts_pay_fulfill_checkout(
+  p_order_id text, p_checkout_session_id text, p_payment_id text,
+  p_paid_amount_centavos bigint, p_currency text, p_livemode boolean
+) returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_order public.ts_pay_orders%rowtype;
+        v_now bigint := (extract(epoch from now()) * 1000)::bigint;
+begin
+  if coalesce(auth.role(), '') <> 'service_role' then raise exception 'Service role required'; end if;
+  select * into v_order from public.ts_pay_orders where id = p_order_id for update;
+  if not found then raise exception 'Payment order not found'; end if;
+  if v_order.checkout_session_id is distinct from p_checkout_session_id then
+    raise exception 'Checkout session does not match payment order';
+  end if;
+  if v_order.test_mode <> (not p_livemode) then raise exception 'Payment mode does not match order'; end if;
+  if upper(coalesce(p_currency, '')) <> 'PHP' or
+     round(v_order.amount * 100)::bigint <> p_paid_amount_centavos then
+    raise exception 'Paid amount does not match order';
+  end if;
+  if v_order.status = 'paid' then
+    if v_order.payment_id is distinct from p_payment_id then raise exception 'Payment reference mismatch'; end if;
+    return jsonb_build_object('fulfilled', true, 'already_fulfilled', true, 'order_id', v_order.id);
+  end if;
+  if v_order.status <> 'pending' then raise exception 'Payment order is not pending'; end if;
+  if v_order.plan_id is not null then
+    if v_order.media_type <> 'strip'
+       or (v_order.plan_id = 'single_strip' and
+           (v_order.amount <> 15 or v_order.quantity <> 1 or v_order.gif_quantity <> 0 or v_order.access_days <> 0))
+       or (v_order.plan_id = 'double_strip' and
+           (v_order.amount <> 25 or v_order.quantity <> 2 or v_order.gif_quantity <> 0 or v_order.access_days <> 0))
+       or (v_order.plan_id = 'quad_gif' and
+           (v_order.amount <> 50 or v_order.quantity <> 4 or v_order.gif_quantity <> 1 or v_order.access_days <> 0))
+       or (v_order.plan_id = 'monthly_pass' and
+           (v_order.amount <> 150 or v_order.quantity <> 1 or v_order.gif_quantity <> 0 or v_order.access_days <> 30))
+       or v_order.plan_id not in ('single_strip','double_strip','quad_gif','monthly_pass') then
+      raise exception 'Plan details do not match the approved offer';
+    end if;
+    if v_order.quantity > 0 and v_order.plan_id <> 'monthly_pass' then
+      insert into public.ts_pay_credits(lib, event_id, device_id, media_type, remaining)
+      values (v_order.lib, coalesce(v_order.event_id, 'default'), v_order.device_id, 'strip', v_order.quantity);
+    end if;
+    if v_order.gif_quantity > 0 then
+      insert into public.ts_pay_credits(lib, event_id, device_id, media_type, remaining)
+      values (v_order.lib, coalesce(v_order.event_id, 'default'), v_order.device_id, 'gif', v_order.gif_quantity);
+    end if;
+    if v_order.access_days > 0 then
+      insert into public.ts_pay_memberships as membership(lib, event_id, device_id, access_until, updated_at)
+      values (
+        v_order.lib, 'default', v_order.device_id,
+        v_now + (v_order.access_days::bigint * 86400000), v_now
+      )
+      on conflict (lib, event_id, device_id) do update
+        set access_until = greatest(membership.access_until, v_now) +
+              (v_order.access_days::bigint * 86400000),
+            updated_at = v_now;
+    end if;
+  else
+    insert into public.ts_pay_credits(lib, event_id, device_id, media_type, remaining)
+    values (v_order.lib, coalesce(v_order.event_id, 'default'), v_order.device_id, v_order.media_type, v_order.quantity);
+  end if;
+  insert into public.ts_pay_sales(
+    lib, event_id, event_name, device_id, media_type, quantity, gif_quantity, plan_id,
+    product_name, payment_id, test_mode, amount, payment_method, description
+  ) values (
+    v_order.lib, v_order.event_id, v_order.event_name, v_order.device_id, v_order.media_type,
+    case when v_order.plan_id = 'monthly_pass' then 0
+         when v_order.plan_id is not null then v_order.quantity
+         else v_order.quantity end,
+    case when v_order.plan_id is not null then v_order.gif_quantity else 0 end,
+    v_order.plan_id, v_order.product_name, p_payment_id, v_order.test_mode, v_order.amount,
+    case when v_order.test_mode then 'paymongo_test' else 'paymongo_gcash' end,
+    case when v_order.plan_id is not null then 'PayMongo GCash plan'
+         when v_order.bundle_id is null then 'PayMongo GCash single save'
+         else 'PayMongo GCash bundle' end
+  );
+  update public.ts_pay_orders set status = 'paid', last_payment_status = 'paid', payment_id = p_payment_id,
+    paid_at = (extract(epoch from now()) * 1000)::bigint
+   where id = p_order_id;
+  return jsonb_build_object('fulfilled', true, 'already_fulfilled', false, 'order_id', v_order.id);
+end $$;
+revoke all on function public.ts_pay_fulfill_checkout(text,text,text,bigint,text,boolean) from public, anon, authenticated;
+grant execute on function public.ts_pay_fulfill_checkout(text,text,text,bigint,text,boolean) to service_role;
+
 grant execute on function public.ts_pay_purchase_save(text,text,text,text,text,text,text) to anon, authenticated;
 
 grant select on public.ts_pay_settings, public.ts_pay_events, public.ts_pay_bundles to anon, authenticated;

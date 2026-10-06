@@ -1,0 +1,8 @@
+[functions.create-gcash-checkout]
+verify_jwt = false
+
+[functions.payment-status]
+verify_jwt = false
+
+[functions.paymongo-webhook]
+verify_jwt = false
