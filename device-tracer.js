@@ -176,14 +176,25 @@ const DeviceTracker = (() => {
 
   async function invokeFunction(name, body) {
     if (!configured()) throw new Error('Cloud sync is not set up');
-    const c = cfg();
-    const s = sess();
-    const res = await fetch(base() + '/functions/v1/' + encodeURIComponent(name), {
-      method: 'POST',
-      headers: headers({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(body)
-    });
+    let res;
+    try {
+      res = await fetch(base() + '/functions/v1/' + encodeURIComponent(name), {
+        method: 'POST',
+        headers: headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(body)
+      });
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new Error('Could not reach the Supabase "' + name +
+          '" function. Check the connection, deploy the function, and allow this site origin in APP_ORIGIN.');
+      }
+      throw error;
+    }
     const result = await res.json().catch(() => ({}));
+    if (res.status === 404 && result.code === 'NOT_FOUND') {
+      throw new Error('Supabase Edge Function "' + name +
+        '" is not deployed. Deploy the payment functions from the supabase/functions folder.');
+    }
     if (!res.ok) throw new Error(result.error || result.message || ('Function request failed (' + res.status + ')'));
     return result;
   }

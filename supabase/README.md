@@ -10,18 +10,24 @@ Run the complete, rerunnable `supabase-setup.sql` in the Supabase SQL Editor. Th
 
 ## Deploy the Edge Functions
 
+The checkout functions must be deployed to the same Supabase project configured in `cloud-config.js`. If checkout says **Failed to fetch**, first confirm these functions are deployed; the browser cannot call a function that is missing or whose CORS origin is not allowed.
+
 Install the Supabase CLI, then from the repository root:
 
 ```sh
 supabase login
 supabase link --project-ref YOUR_SUPABASE_PROJECT_REF
 supabase secrets set PAYMONGO_SECRET_KEY=sk_test_YOUR_TEST_SECRET_KEY PAYMONGO_MODE=test PHOTOBOOTH_LIB=YOUR_LIBRARY_CODE APP_ORIGIN=https://kenzz-smd.github.io/PHOTOBOOTH
-supabase functions deploy create-gcash-checkout
-supabase functions deploy payment-status
-supabase functions deploy paymongo-webhook
+supabase functions deploy create-gcash-checkout --project-ref YOUR_SUPABASE_PROJECT_REF
+supabase functions deploy payment-status --project-ref YOUR_SUPABASE_PROJECT_REF
+supabase functions deploy paymongo-webhook --project-ref YOUR_SUPABASE_PROJECT_REF
 ```
 
 Supabase provides `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to Edge Functions. Do not paste either service-role credentials or the PayMongo secret key into HTML, JavaScript, GitHub, or the admin form. The sandbox function rejects a key whose `sk_test_` prefix does not match `PAYMONGO_MODE=test`.
+
+`APP_ORIGIN` must be the deployed booth URL, including `/PHOTOBOOTH` for this GitHub Pages project. CORS compares its origin (`https://kenzz-smd.github.io`); local development on `http://localhost` and `http://127.0.0.1` is also allowed. Redeploy the functions after changing their secrets.
+
+To verify deployment, send an `OPTIONS` request to `https://YOUR_SUPABASE_PROJECT_REF.supabase.co/functions/v1/create-gcash-checkout` from the booth origin. The response must include `Access-Control-Allow-Origin: https://kenzz-smd.github.io` and allow `POST` plus the `apikey` and `content-type` headers. A Supabase `NOT_FOUND` response means the function is not deployed to that project.
 
 ## Configure PayMongo
 
