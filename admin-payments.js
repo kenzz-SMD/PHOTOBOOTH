@@ -7,6 +7,8 @@
   let events = [];
   let bundles = [];
   let started = false;
+  let paymentQrUrl = '';
+  let paymentQrLabel = '';
 
   function createCard() {
     if ($('pay-card')) return;
@@ -23,6 +25,12 @@
         '<label><span><input id="pay-strip-on" type="checkbox"> Charge for strip saves</span><input id="pay-strip-price" type="number" min="0" step="0.01" value="20" aria-label="Strip price in pesos"></label>' +
       '</div><button id="pay-save-settings" type="button" class="btn">Save payment settings</button>' +
       '<p id="pay-settings-msg" class="muted small" role="status"></p></div>' +
+      '<div class="pay-block"><h3>GCash QR code</h3><p class="muted small">Upload a QR image to show guests as a manual payment option. Staff must verify payment and issue a counter voucher; QR payments do not unlock saves automatically.</p>' +
+        '<div class="pay-grid"><label>QR image (PNG, JPG or WebP; max 5 MB)<input id="pay-qr-file" type="file" accept="image/png,image/jpeg,image/webp"></label>' +
+        '<label>Label shown to guests<input id="pay-qr-label" type="text" maxlength="80" placeholder="GCash payment"></label></div>' +
+        '<div class="pay-actions"><button id="pay-qr-upload" type="button" class="btn">Upload / replace QR</button><button id="pay-qr-remove" type="button" class="btn ghost">Remove QR</button></div>' +
+        '<div id="pay-qr-preview" class="pay-qr-preview hidden"><img id="pay-qr-preview-image" alt="Current GCash payment QR"><span id="pay-qr-preview-label"></span></div>' +
+        '<p id="pay-qr-msg" class="muted small" role="status"></p></div>' +
         '<div class="pay-block"><h3>Events</h3><p class="muted small">Choose an event on this booth device, then set its charging mode. “Paid” uses the global media switches and prices unless you enter event-specific overrides.</p>' +
         '<div class="pay-grid"><label>Active event on this device<select id="pay-device-event"><option value="">No event</option></select></label>' +
         '<label>Event to edit<select id="pay-event-edit"><option value="">Create a new event</option></select></label>' +
@@ -69,6 +77,18 @@
     if (!node) return;
     node.textContent = text || '';
     node.classList.toggle('pay-error', !!isError);
+  }
+  function renderQrPreview() {
+    const preview = $('pay-qr-preview');
+    const image = $('pay-qr-preview-image');
+    preview.classList.toggle('hidden', !paymentQrUrl);
+    if (!paymentQrUrl) {
+      image.removeAttribute('src');
+      $('pay-qr-preview-label').textContent = '';
+      return;
+    }
+    image.src = paymentQrUrl;
+    $('pay-qr-preview-label').textContent = paymentQrLabel || 'GCash payment';
   }
   function validMoney(value) { return Number.isFinite(Number(value)) && Number(value) >= 0; }
   function id(prefix) { return prefix + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -138,9 +158,13 @@
         lib: PaySystem.lib(), enabled: $('pay-enabled').checked, free_saves: free,
         gif_paid: $('pay-gif-on').checked, strip_paid: $('pay-strip-on').checked,
         gif_price: Number($('pay-gif-price').value), strip_price: Number($('pay-strip-price').value),
+        payment_qr_url: paymentQrUrl || null,
+        payment_qr_label: $('pay-qr-label').value.trim() || null,
         updated_at: Date.now()
       })
     });
+    paymentQrLabel = $('pay-qr-label').value.trim();
+    renderQrPreview();
     message('pay-settings-msg', 'Payment settings saved.');
     $('pay-state').textContent = $('pay-enabled').checked ? 'On' : 'Off · all saves free';
   }
@@ -156,8 +180,17 @@
       $('pay-strip-on').checked = s.strip_paid;
       $('pay-gif-price').value = s.gif_price;
       $('pay-strip-price').value = s.strip_price;
+      paymentQrUrl = s.payment_qr_url || '';
+      paymentQrLabel = s.payment_qr_label || '';
+      $('pay-qr-label').value = paymentQrLabel;
       $('pay-state').textContent = s.enabled ? 'On' : 'Off · all saves free';
-    } else $('pay-state').textContent = 'Not configured';
+    } else {
+      paymentQrUrl = '';
+      paymentQrLabel = '';
+      $('pay-qr-label').value = '';
+      $('pay-state').textContent = 'Not configured';
+    }
+    renderQrPreview();
     renderEvents();
     showEvent(events.find((event) => event.id === $('pay-event-edit').value));
   }
@@ -345,6 +378,62 @@
   }
   function bind() {
     $('pay-save-settings').addEventListener('click', () => saveSettings().catch((err) => message('pay-settings-msg', err.message, true)));
+    $('pay-qr-upload').addEventListener('click', async () => {
+      const input = $('pay-qr-file');
+      const file = input.files[0];
+      if (!file) { message('pay-qr-msg', 'Choose a QR image first.', true); return; }
+      const extensions = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
+      if (!extensions[file.type] || file.size > 5 * 1024 * 1024) {
+        message('pay-qr-msg', 'Choose a PNG, JPG, or WebP image smaller than 5 MB.', true);
+        return;
+      }
+      const button = $('pay-qr-upload');
+      button.disabled = true;
+      message('pay-qr-msg', 'Uploading QR image…');
+      try {
+        const path = PaySystem.lib() + '/payment/gcash-qr-' + Date.now() + '.' + extensions[file.type];
+        const url = await DeviceTracker.uploadStorage('timeless-strips', path, file);
+        const label = $('pay-qr-label').value.trim() || 'GCash payment';
+        await DeviceTracker.rest('ts_pay_settings?on_conflict=lib', {
+          method: 'POST', headers: jsonHeaders,
+          body: JSON.stringify({
+            lib: PaySystem.lib(), payment_qr_url: url, payment_qr_label: label, updated_at: Date.now()
+          })
+        });
+        paymentQrUrl = url;
+        paymentQrLabel = label;
+        $('pay-qr-label').value = label;
+        renderQrPreview();
+        input.value = '';
+        message('pay-qr-msg', 'GCash QR uploaded and saved. Guests will see it the next time they open payment options.');
+      } catch (err) {
+        message('pay-qr-msg', err.message, true);
+      } finally {
+        button.disabled = false;
+      }
+    });
+    $('pay-qr-remove').addEventListener('click', async () => {
+      if (!paymentQrUrl) { message('pay-qr-msg', 'There is no QR code to remove.'); return; }
+      const button = $('pay-qr-remove');
+      button.disabled = true;
+      try {
+        await DeviceTracker.rest('ts_pay_settings?on_conflict=lib', {
+          method: 'POST', headers: jsonHeaders,
+          body: JSON.stringify({
+            lib: PaySystem.lib(), payment_qr_url: null, payment_qr_label: null, updated_at: Date.now()
+          })
+        });
+        paymentQrUrl = '';
+        paymentQrLabel = '';
+        $('pay-qr-label').value = '';
+        renderQrPreview();
+        message('pay-qr-msg', 'GCash QR removed from guest payment options.');
+      } catch (err) {
+        message('pay-qr-msg', err.message, true);
+      } finally {
+        button.disabled = false;
+      }
+    });
     $('pay-event-edit').addEventListener('change', () => showEvent(events.find((event) => event.id === $('pay-event-edit').value)));
     $('pay-new-event').addEventListener('click', () => { $('pay-event-edit').value = ''; showEvent(null); });
     $('pay-save-event').addEventListener('click', () => saveEvent().catch((err) => message('pay-event-msg', err.message, true)));

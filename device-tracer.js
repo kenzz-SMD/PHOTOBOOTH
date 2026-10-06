@@ -153,6 +153,27 @@ const DeviceTracker = (() => {
     return t ? JSON.parse(t) : null;
   }
 
+  async function uploadStorage(bucket, path, file) {
+    if (!configured()) throw new Error('Cloud sync is not set up');
+    const s = sess();
+    if (s && s.expires_at - 30000 < Date.now() && typeof CloudSync !== 'undefined' && CloudSync.sync) {
+      try { await CloudSync.sync(); } catch (e) {}
+    }
+    if (!validSess()) throw new Error('Sign in as an admin before uploading files.');
+    const objectPath = encodeURIComponent(bucket) + '/' + path.split('/').map(encodeURIComponent).join('/');
+    const res = await fetch(base() + '/storage/v1/object/' + objectPath, {
+      method: 'POST',
+      headers: headers({ 'Content-Type': file.type, 'x-upsert': 'true' }),
+      body: file
+    });
+    if (!res.ok) {
+      let text = '';
+      try { text = (await res.text()).slice(0, 160); } catch (e) {}
+      throw new Error('File upload failed (' + res.status + ') ' + text);
+    }
+    return base() + '/storage/v1/object/public/' + objectPath;
+  }
+
   async function invokeFunction(name, body) {
     if (!configured()) throw new Error('Cloud sync is not set up');
     const c = cfg();
@@ -183,7 +204,7 @@ const DeviceTracker = (() => {
   if (document.readyState === 'complete') start(); else window.addEventListener('load', start);
 
   return {
-    deviceId, rest, invokeFunction, configured, tracking, restart: connect,
+    deviceId, rest, uploadStorage, invokeFunction, configured, tracking, restart: connect,
     get live() { return list(); }, get connected() { return connected; }, get connectedAt() { return connectedAt; }, get error() { return lastError; },
     onPresence(cb) { cbs.push(cb); cb(list()); },
     onStatus(cb) { statusCbs.push(cb); cb({ connected, error: lastError }); }

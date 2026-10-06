@@ -43,4 +43,8 @@ Subscribe it to **`checkout_session.payment.paid`** and **`checkout_session.paym
 
 Existing **Pay with GCash** save-credit checkout continues to use the event's configured prices and bundles. Deploy the updated `create-gcash-checkout`, `payment-status`, and `paymongo-webhook` functions after applying the SQL changes.
 
+## Optional manual GCash QR
+
+In Admin → Payments → GCash QR code, choose a PNG, JPG, or WebP image (up to 5 MB), set the guest-facing label, and upload it. The QR is stored in the existing public `timeless-strips` Storage bucket and appears in the paid-save dialog on the next open. Replace or remove it from the same admin section. Manual QR payments are not verified by the app and do not unlock saves automatically; staff must verify the payment and issue a counter voucher.
+
 This is a test integration, not a live payment configuration. Go live only after the end-to-end sandbox test passes, the merchant account and GCash method are activated, and an operator intentionally replaces the Edge Function secrets with live credentials and `PAYMONGO_MODE=live`.

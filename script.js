@@ -1792,15 +1792,42 @@ async function openPaidSaveDialog(mediaType, blob, filename, price) {
   setPayDialogMessage('', false);
   $('pay-gcash-checkout').textContent = 'Pay with GCash';
   $('pay-dialog-price').textContent = price == null ? '' : 'Single save: ₱' + Number(price).toFixed(2) + '. Choose a bundle for its listed price.';
+  $('pay-dialog-copy').textContent = 'Your free saves are used. Pay securely with GCash to unlock the selected save or bundle.';
   const bundleSelect = $('pay-bundle-select');
   bundleSelect.replaceChildren(new Option('Single save', ''));
   $('pay-dialog-confirm').classList.remove('hidden');
   $('pay-gcash-checkout').classList.remove('hidden');
   $('pay-finish-save').classList.add('hidden');
+  $('pay-qr-payment').classList.add('hidden');
+  const qrImage = $('pay-qr-payment-image');
+  qrImage.onerror = null;
+  qrImage.removeAttribute('src');
   $('pay-dialog-confirm').disabled = false;
   $('pay-gcash-checkout').disabled = false;
   try {
     const data = await PaySystem.load();
+    const qrUrl = data.settings && data.settings.payment_qr_url;
+    if (qrUrl) {
+      try {
+        const parsedQrUrl = new URL(qrUrl, location.href);
+        if (parsedQrUrl.protocol === 'http:' || parsedQrUrl.protocol === 'https:') {
+          $('pay-qr-payment-label').textContent = (data.settings.payment_qr_label || 'GCash payment');
+          qrImage.onerror = () => {
+            $('pay-qr-payment').classList.add('hidden');
+            $('pay-dialog-copy').textContent = 'Your free saves are used. Pay securely with GCash to unlock the selected save or bundle.';
+            setPayDialogMessage('The uploaded GCash QR could not be loaded. Use secure checkout or a counter voucher.', true);
+          };
+          qrImage.src = parsedQrUrl.href;
+          $('pay-qr-payment').classList.remove('hidden');
+          $('pay-dialog-copy').textContent = 'Your free saves are used. Pay with secure GCash checkout or scan the manual QR below and ask staff for a voucher.';
+        } else {
+          setPayDialogMessage('The uploaded GCash QR URL is invalid. Use secure checkout or a counter voucher.', true);
+        }
+      } catch (err) {
+        console.error('Could not display the uploaded GCash QR:', err);
+        setPayDialogMessage('The uploaded GCash QR URL is invalid. Use secure checkout or a counter voucher.', true);
+      }
+    }
     checkoutBundles = data.bundles.filter((bundle) => bundle.media_type === mediaType &&
       (!bundle.event_id || bundle.event_id === PaySystem.activeEventId()))
     checkoutBundles.forEach((bundle) => bundleSelect.add(new Option(
