@@ -103,6 +103,34 @@
 
   // ---- keep tiles + tab badges in sync with the real elements ----
   const shown = {};
+  let refreshQueued = false;
+  let mainObserver = null;
+  const sourceObserver = new MutationObserver(() => {
+    if (refreshQueued) return;
+    refreshQueued = true;
+    requestAnimationFrame(() => {
+      refreshQueued = false;
+      refresh();
+    });
+  });
+  function observeSources(main) {
+    sourceObserver.disconnect();
+    const selectors = TILES.map((tile) => tile.from)
+      .concat(TABS.filter((tab) => tab.badge).map((tab) => tab.badge));
+    const sources = Array.from(new Set(selectors))
+      .map((selector) => $(selector))
+      .filter(Boolean);
+    sources.forEach((source) => sourceObserver.observe(source, {
+      childList: true,
+      characterData: true,
+      subtree: true
+    }));
+    refresh();
+    if (!mainObserver) {
+      mainObserver = new MutationObserver(() => observeSources(main));
+      mainObserver.observe(main, { childList: true });
+    }
+  }
   function tween(el, to) {
     const key = el.id, from = shown[key] == null ? 0 : shown[key];
     if (from === to) { el.textContent = to; return; }
@@ -136,7 +164,7 @@
     buildNav(); buildHero(); tagCards(); refresh();
     const main = $('main');
     if (main) new MutationObserver(() => { tagCards(); }).observe(main, { childList: true });
-    setInterval(refresh, 800);
+    if (main) observeSources(main);
     window.addEventListener('hashchange', () => show((location.hash || '').slice(1)));
     show((location.hash || '').slice(1) || 'overview');
     setTimeout(moveInd, 300);

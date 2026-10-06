@@ -177,6 +177,7 @@ const DeviceTracker = (() => {
     window.addEventListener('online', connect);
     window.addEventListener('offline', disconnect);
     window.addEventListener('admin-unlocked', connect);                                      // re-announce as admin
+    window.addEventListener('admin-locked', connect);                                        // drop admin presence on lock
     document.addEventListener('visibilitychange', () => { if (!document.hidden) ping(); });
   }
   if (document.readyState === 'complete') start(); else window.addEventListener('load', start);

@@ -230,3 +230,91 @@ html.fx-off .top h1::before, html.fx-off .ov-wave, html.fx-off .ov-live, html.fx
 .tactions { min-width: 0; }
 /* filter dropdown next to the "Templates" title must stay inside its card too */
 #grid-filter { max-width: min(220px, 100%); }
+
+/* Keep dashboard headings, controls, and copy aligned at every card width. */
+body.locked .admin-nav { display: none; }
+body:not(.locked) .top { align-items: center; }
+body:not(.locked) .top h1 { min-width: 0; flex-wrap: wrap; }
+body:not(.locked) .top-actions { align-items: center; justify-content: flex-end; }
+body:not(.locked) main > .card { min-width: 0; }
+.card h2 {
+  position: relative;
+  display: block;
+  min-width: 0;
+  margin: 0 0 14px;
+  padding: 0 0 12px;
+  line-height: 1.35;
+}
+.card h2::after {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  flex: none;
+  flex-basis: auto;
+  width: 54px;
+  margin: 0;
+}
+.card h2 .pill { display: inline-block; vertical-align: middle; }
+.section-title-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
+.section-title-row h2 { flex: 1 1 auto; margin-bottom: 14px; }
+.section-title-row #grid-filter {
+  flex: 0 1 220px;
+  width: min(220px, 42%);
+  min-width: 140px;
+  margin: 0 0 14px;
+  padding: 9px 34px 9px 12px;
+}
+.card > .muted,
+.pay-card .pay-block > .muted,
+.login-card > .muted {
+  max-width: 78ch;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.pay-card .pay-block h3 { line-height: 1.35; }
+.pay-card .pay-grid label { min-width: 0; line-height: 1.45; }
+.pay-card .pay-grid input:not([type="checkbox"]),
+.pay-card .pay-grid select,
+.pay-report-head input { width: 100%; min-width: 0; min-height: 42px; padding: 9px 12px; font: inherit; }
+.pay-report-head > div { min-width: min(100%, 300px); }
+.pay-report-head h3 { margin: 0 0 5px; }
+.pay-report-head p { margin: 0; line-height: 1.55; }
+.pay-table th, .pay-table td { vertical-align: top; line-height: 1.45; }
+.an-tab { min-height: 42px; }
+.btn:focus-visible, .an-tab:focus-visible, .ov-tile:focus-visible, .ov-chip:focus-visible,
+input:focus-visible, select:focus-visible, button:focus-visible {
+  outline: 3px solid rgba(133, 80, 176, .55);
+  outline-offset: 2px;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+@media (max-width: 700px) {
+  body:not(.locked) .top { align-items: flex-start; padding: 14px 16px; }
+  body:not(.locked) .top-actions { justify-content: flex-start; }
+  body:not(.locked) .top-actions .btn.ghost { padding: 8px 12px; font-size: 13px; }
+  main { width: 100%; margin-top: 8px; padding-right: 12px; padding-left: 12px; gap: 14px; }
+  body:not(.locked) main > .card { padding: 18px 16px; border-radius: 20px; }
+  .section-title-row { align-items: flex-start; gap: 10px; }
+  .section-title-row #grid-filter { flex-basis: 42%; min-width: 0; padding-right: 24px; font-size: 12px; }
+  .an-track { justify-content: flex-start; }
+}
+@media (max-width: 420px) {
+  .section-title-row { display: block; }
+  .section-title-row #grid-filter { display: block; width: 100%; margin: 0 0 14px; }
+  .pay-card .pay-grid { grid-template-columns: minmax(0, 1fr); }
+  .pay-report-head { align-items: stretch; flex-direction: column; }
+  .pay-report-head > * { width: 100%; }
+  .ov-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}

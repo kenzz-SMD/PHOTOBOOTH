@@ -18,7 +18,7 @@
     <form id="login-form" class="card login-card">
       <div class="login-badge" aria-hidden="true">🔒</div>
       <h2>Admin login</h2>
-      <p class="muted small">Only booth admins can manage templates. Guests use the photobooth link.</p>
+      <p class="muted small">Sign in to manage your booth, templates, devices, and payments. Guests can use the photobooth link.</p>
       <label class="lf">Email<input id="login-email" type="email" autocomplete="username" placeholder="you@example.com" required></label>
       <label class="lf">Password
         <span class="pw-wrap"><input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••" required>
@@ -79,10 +79,11 @@
 
     <!-- 3. Template list -->
     <section class="card">
-      <h2>
-        Templates <span id="count" class="pill"></span>
-        <select id="grid-filter" style="float:right;max-width:220px"></select>
-      </h2>
+      <div class="section-title-row">
+        <h2>Templates <span id="count" class="pill"></span></h2>
+        <label class="visually-hidden" for="grid-filter">Filter templates by category</label>
+        <select id="grid-filter"></select>
+      </div>
       <div id="grid"></div>
       <p class="muted small" id="sync-note">
         Uploaded templates are saved in this browser. The photobooth opened in the same browser
