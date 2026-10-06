@@ -7,5 +7,8 @@ window.CLOUD_CONFIG = {
   key: 'sb_publishable_0LFjyV0WXohLqDPCIw31Nw_6Ntqljyw', // anon public key, e.g. 'eyJhbGciOi...'
   lib: 'cebu-booth-k7x2p9qm4d', // library code, e.g. 'my-booth-4f8a2c91'
   trackDevices: true, // true = each device announces itself so the admin sees "Active Devices"
-  syncStrips: false   // false = users' finished photo strips stay private on their own device
+  syncStrips: false,  // false = users' finished photo strips stay private on their own device
+  // PayMongo PUBLIC key (safe to be public). The current GCash checkout does not read it:
+  // the SECRET key and PAYMONGO_MODE live in Supabase Edge Function secrets, never in this file.
+  paymongoPublicKey: 'pk_live_zA5kkFpqnRph9v7tsmEvUqfk'
 };
